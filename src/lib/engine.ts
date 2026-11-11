@@ -1,13 +1,15 @@
 // MOTOR DE RECOMENDAÇÃO
 // Dá uma nota para cada Brawler disponível somando 6 fatores:
 //   base (meta + modo) + mapa + counter + sinergia + composição - risco + histórico pessoal
-// Dados usados:
+// Dados usados (do mais forte para o mais fraco, quando existem):
+//   - partidas reais coletadas pelo coletor .. src/lib/collector.ts (mapa, counter e sinergia)
 //   - tier de cada Brawler no Ranked ......... src/data/brawlers.ts
 //   - os 5 mais fortes de cada mapa .......... src/data/maps.ts
 //   - counters e sinergias específicos ....... src/data/meta.json
 //   - regras gerais por classe (abaixo), quando não há dado específico
 
 import meta from "@/data/meta.json";
+import type { Collected } from "./collector";
 import { STR, className, modeName, type Lang } from "./i18n";
 import type { Personal } from "./storage";
 import type { Brawler, GameMap, Recommendation, Tier } from "./types";
@@ -41,11 +43,30 @@ const BEATS: Record<string, Record<string, number>> = {
   Support: {},
 };
 
+// ----- Partidas reais do coletor (quando existem) -----
+let COLLECTED: Collected | null = null;
+/** Recebe as contas do coletor. Chamado uma vez quando o site abre. */
+export function setCollected(c: Collected | null) {
+  COLLECTED = c;
+}
+/** % de vitórias (de 0 a 1) de uma chave, se tiver partidas suficientes. */
+function rate(table: Record<string, [number, number]> | undefined, key: string, minGames: number): number | null {
+  const p = table?.[key];
+  return p && p[1] >= minGames ? p[0] / p[1] : null;
+}
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+/** Momento do pick: o primeiro do time, os do meio, ou o último. */
+export type PickStage = "first" | "middle" | "last";
+
 // Pesos de cada fator. Mexer aqui muda o "jeito de pensar" do sistema.
 const W = { tier: 0.6, mode: 0.4, counter: 1.5, synergy: 1, risk: 0.4 };
 
 /** Vantagem de um Brawler sobre outro (dado específico tem prioridade sobre a classe). */
 function matchup(a: Brawler, b: Brawler): number {
+  // 1º: partidas reais (pelo menos 25 partidas entre os dois).
+  const real = rate(COLLECTED?.vs, `${a.id}:${b.id}`, 25);
+  if (real !== null) return clamp((real - 0.5) * 8, -2, 2);
   for (const c of meta.counters) {
     if (c.strong === a.name && c.weak === b.name) return c.value;
     if (c.strong === b.name && c.weak === a.name) return -c.value;
@@ -54,6 +75,9 @@ function matchup(a: Brawler, b: Brawler): number {
 }
 
 function synergy(a: Brawler, b: Brawler): number {
+  const [x, y] = [a.id, b.id].sort((p, q) => p - q);
+  const real = rate(COLLECTED?.with, `${x}+${y}`, 25);
+  if (real !== null) return clamp((real - 0.5) * 8, 0, 2);
   for (const s of meta.synergies) {
     if ((s.a === a.name && s.b === b.name) || (s.a === b.name && s.b === a.name)) return s.value;
   }
@@ -71,7 +95,11 @@ function vulnerability(cls: string): number {
 export function mapStrength(b: Brawler, map: GameMap) {
   const base = TIER_VALUE[b.tier] * W.tier + (MODE_FIT[map.mode]?.[b.class] ?? 5) * W.mode;
   const pos = map.top.slice(0, TOP_BONUS.length).indexOf(b.name); // -1 quando não está entre os 10
-  return { base, bonus: pos >= 0 ? TOP_BONUS[pos] : 0, pos };
+  let bonus = pos >= 0 ? TOP_BONUS[pos] : 0;
+  // Partidas reais neste mapa (pelo menos 20) ajustam o bônus para cima ou para baixo.
+  const real = rate(COLLECTED?.maps[String(map.gameId)], String(b.id), 20);
+  if (real !== null) bonus += clamp((real - 0.5) * 12, -1.5, 2);
+  return { base, bonus, pos, real };
 }
 
 /**
@@ -120,6 +148,8 @@ type DraftState = {
   personal?: Personal;
   /** Idioma das frases de explicação. */
   lang?: Lang;
+  /** Momento do pick: muda o peso do counter (vale mais no último pick). */
+  stage?: PickStage;
 };
 
 /** Calcula o ranking completo, do melhor para o pior. */
@@ -134,6 +164,8 @@ export function recommend(state: DraftState): Recommendation[] {
   const foes = pick(enemies);
   const used = new Set([...bans, ...mine, ...enemies]);
   const enemyPicksLeft = 3 - foes.length; // quantos picks o inimigo ainda tem para responder
+  // No primeiro pick quase não há inimigos para counterar; no último, o counter é o principal.
+  const counterWeight = W.counter * (state.stage === "last" ? 1.6 : state.stage === "first" ? 0.7 : 1);
 
   const result: Recommendation[] = [];
 
@@ -145,6 +177,7 @@ export function recommend(state: DraftState): Recommendation[] {
     // 1) BASE (meta atual + modo) e 2) MAPA
     const s = mapStrength(b, map);
     if (s.pos >= 0) reasons.push(t.rTop(s.pos + 1, map.name));
+    if (s.real !== null) reasons.push(t.rRealMap(Math.round(s.real * 100)));
     if (b.tier === "S+" || b.tier === "S") reasons.push(t.rTier(b.tier));
     else if (b.tier === "D") reasons.push(t.rWeak);
     if (s.pos < 0 && (MODE_FIT[map.mode]?.[b.class] ?? 5) <= 4) reasons.push(t.rBadMode(modeName(lang, map.mode)));
@@ -203,7 +236,7 @@ export function recommend(state: DraftState): Recommendation[] {
     const parts = {
       base: s.base,
       map: s.bonus,
-      counter: counter * W.counter,
+      counter: counter * counterWeight,
       synergy: syn * W.synergy,
       comp,
       risk: -risk,

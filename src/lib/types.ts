@@ -11,6 +11,8 @@ export type Brawler = {
   tier: Tier;
   /** Endereço do ícone. Fica null quando não temos a imagem. */
   imageUrl: string | null;
+  /** % de vitórias no Ranked (meta ao vivo). Fica sem valor quando não temos o dado. */
+  winRate?: number;
 };
 
 export type GameMap = {
@@ -22,6 +24,8 @@ export type GameMap = {
   top: string[];
   /** Número do mapa no jogo (15000007...). Usado para a foto e para o meta ao vivo. */
   gameId: number;
+  /** % de vitórias de cada Brawler de "top", na mesma ordem (meta ao vivo). */
+  topRates?: number[];
   /** Foto do mapa (vista de cima). */
   imageUrl: string | null;
 };

@@ -61,19 +61,27 @@ export function parseTable(html: string, knownNames: string[]): MetaRow[] {
     const start = (link.index ?? 0) + link[0].length;
     const end = i + 1 < links.length ? (links[i + 1].index ?? clean.length) : clean.length;
     const between = clean.slice(start, end).replace(/<[^>]+>/g, " ");
-    const nums = [...between.matchAll(/(\d{1,3}\.\d{2})/g)].map((m) => Number(m[1]));
+    // Números com casa decimal (60.1, 60.10, 60,10), com ou sem "%".
+    const nums = [...between.matchAll(/(\d{1,3}[.,]\d{1,2})\s*%?/g)].map((m) => Number(m[1].replace(",", ".")));
     if (nums.length < 2) return; // sem números: não é uma linha da tabela (ex.: medalhas do topo)
 
     seen.add(name);
     rows.push({ name, wins: nums[0], use: nums[1] });
   });
-  return rows;
+  // O 1º é sempre quem tem MAIS % DE VITÓRIAS.
+  return rows.sort((a, b) => b.wins - a.wins);
 }
 
 async function fetchPage(url: string): Promise<string | null> {
   try {
     const res = await fetch(url, {
-      headers: { "User-Agent": "BrawlDraft (site de fã, atualiza a cada 12h)" },
+      headers: {
+        // Cabeçalhos de um navegador comum: alguns sites recusam pedidos sem eles.
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "en-US,en;q=0.9,pt-BR;q=0.8",
+      },
     });
     return res.ok ? await res.text() : null;
   } catch {
@@ -87,12 +95,16 @@ async function fetchPage(url: string): Promise<string | null> {
  */
 export async function getLiveMeta(mapIds: number[], knownNames: string[]): Promise<LiveMeta | null> {
   "use cache";
-  // Guarda o resultado: depois de 12 horas, a próxima visita dispara uma busca nova.
-  cacheLife({ stale: 60 * 60, revalidate: TWELVE_HOURS, expire: TWELVE_HOURS * 14 });
 
   const overallHtml = await fetchPage(BASE);
   const overall = overallHtml ? parseTable(overallHtml, knownNames) : [];
-  if (overall.length < 5) return null;
+  if (overall.length < 5) {
+    // Falhou: guarda o "falhou" por só 10 minutos, para tentar de novo logo.
+    cacheLife({ stale: 60, revalidate: 600, expire: 3600 });
+    return null;
+  }
+  // Deu certo: guarda por 12 horas. Depois disso, a próxima visita busca de novo.
+  cacheLife({ stale: 60 * 60, revalidate: TWELVE_HOURS, expire: TWELVE_HOURS * 14 });
 
   const maps: Record<number, MetaRow[]> = {};
   const pages = await Promise.all(mapIds.map((id) => fetchPage(`${BASE}/${id}`)));

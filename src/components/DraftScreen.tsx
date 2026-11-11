@@ -6,12 +6,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BRAWLERS } from "@/data/brawlers";
-import { nextTurn, recommend, suggestBans, type Side } from "@/lib/engine";
+import { nextTurn, recommend, suggestBans, type PickStage, type Side } from "@/lib/engine";
 import { className, modeName, type Dict, type Lang } from "@/lib/i18n";
 import { readRoom, writeRoom, type RoomState } from "@/lib/room";
 import type { HistoryEntry, Personal } from "@/lib/storage";
 import type { Brawler, GameMap } from "@/lib/types";
-import { BrawlerGrid, CARD, Icon, MODE_COLOR, MapThumb, PANEL, Part, SmallButton, Strip, outline } from "./ui";
+import { BrawlerGrid, CARD, Icon, MODE_COLOR, MapThumb, PANEL, Part, SmallButton, Strip } from "./ui";
 
 type Target = "ban" | "mine" | "enemy";
 
@@ -130,9 +130,14 @@ export default function DraftScreen(props: {
   const used = new Set([...bans, ...mine, ...enemies]);
 
   // O ranking é recalculado sempre que algo muda.
+  // Em que momento do draft está o SEU próximo pick (pela ordem 1-2-2-1).
+  const pickIndex = mine.length + enemies.length; // 0 a 5
+  const stage: PickStage = pickIndex === 0 ? "first" : pickIndex === 5 ? "last" : "middle";
+
   const ranking = useMemo(
     () =>
       recommend({
+        stage,
         brawlers,
         map,
         bans,
@@ -142,7 +147,12 @@ export default function DraftScreen(props: {
         personal: training ? undefined : props.personal,
         allowed: filterOn ? new Set(props.owned) : undefined,
       }),
-    [brawlers, map, bans, mine, enemies, lang, training, props.personal, filterOn, props.owned],
+    [brawlers, map, bans, mine, enemies, lang, training, props.personal, filterOn, props.owned, stage],
+  );
+  // Picks prováveis do inimigo: o mesmo motor, visto do lado deles.
+  const enemyIdeas = useMemo(
+    () => recommend({ brawlers, map, bans, mine: enemies, enemies: mine, lang }).slice(0, 5),
+    [brawlers, map, bans, mine, enemies, lang],
   );
   const banIdeas = useMemo(() => suggestBans(brawlers, map, bans), [brawlers, map, bans]);
 
@@ -271,7 +281,7 @@ export default function DraftScreen(props: {
         <div className="flex items-center gap-3">
           <MapThumb map={map} width={44} />
           <div>
-          <h1 className="text-3xl leading-tight text-[var(--accent)]" style={outline}>
+          <h1 className="font-display text-3xl leading-tight text-white">
             {map.name}
           </h1>
           <p className="flex items-center gap-2 text-sm text-[var(--soft)]">
@@ -306,8 +316,8 @@ export default function DraftScreen(props: {
             key={s}
             disabled={training}
             onClick={() => setFirst(s)}
-            className={`rounded-lg border-2 px-3 py-1 ${
-              first === s ? "border-black bg-[var(--accent)] text-black" : "border-[var(--line)] bg-[var(--panel)] text-white"
+            className={`rounded-lg border px-3 py-1 ${
+              first === s ? "border-[var(--accent)] bg-[var(--accent)] text-black" : "border-[var(--line)] bg-[var(--panel)] text-white"
             }`}
           >
             {s === "mine" ? t.myTeam : t.enemy}
@@ -333,7 +343,7 @@ export default function DraftScreen(props: {
         </span>
         {clockOn && (
           <span
-            className={`rounded-lg border-2 border-black px-3 py-1 text-xl ${left <= 5 ? "bg-red-500 text-white" : "bg-[var(--accent)] text-black"}`}
+            className={`rounded-lg font-display px-3 py-1 text-xl ${left <= 5 ? "bg-red-500 text-white" : "bg-[var(--accent)] text-black"}`}
           >
             {t.seconds(Math.max(0, left))}
           </span>
@@ -346,11 +356,11 @@ export default function DraftScreen(props: {
       {/* TREINO TERMINADO: nota e revisão de cada escolha */}
       {training && finished && (
         <section className={`${CARD} mt-4 p-4`}>
-          <h2 className="text-xl text-white" style={outline}>
+          <h2 className="font-display text-xl text-white">
             {t.trainResult}
           </h2>
           <div className="mt-2 flex items-center gap-3">
-            <span className="rounded-xl border-2 border-black bg-[var(--accent)] px-4 py-2 text-4xl text-black">{letter}</span>
+            <span className="rounded-xl font-display bg-[var(--accent)] px-4 py-2 text-4xl text-black">{letter}</span>
             <span className="text-white">
               {t.trainGrade}: {grade}/100
             </span>
@@ -373,7 +383,7 @@ export default function DraftScreen(props: {
       {/* AO VIVO, DRAFT COMPLETO: salvar o resultado no histórico */}
       {!training && finished && (
         <section className={`${CARD} mt-4 p-4`}>
-          <h2 className="text-xl text-white" style={outline}>
+          <h2 className="font-display text-xl text-white">
             {t.saveResult}
           </h2>
           {savedResult ? (
@@ -398,14 +408,14 @@ export default function DraftScreen(props: {
                 <button
                   disabled={played === null}
                   onClick={() => saveResult(true)}
-                  className="rounded-lg border-2 border-black bg-green-400 px-3 py-2 text-black disabled:opacity-40"
+                  className="rounded-lg font-display bg-green-400 px-3 py-2 text-black disabled:opacity-40"
                 >
                   {t.win}
                 </button>
                 <button
                   disabled={played === null}
                   onClick={() => saveResult(false)}
-                  className="rounded-lg border-2 border-black bg-red-400 px-3 py-2 text-black disabled:opacity-40"
+                  className="rounded-lg font-display bg-red-400 px-3 py-2 text-black disabled:opacity-40"
                 >
                   {t.loss}
                 </button>
@@ -418,7 +428,7 @@ export default function DraftScreen(props: {
       {/* AO VIVO, FASE DE BANS: sugestões de quem banir */}
       {!training && target === "ban" && (
         <section className="mt-4">
-          <h2 className="text-xl text-white" style={outline}>
+          <h2 className="font-display text-xl text-white">
             {t.banIdeas}
           </h2>
           <p className="font-sans text-xs text-[var(--soft)]">{t.banIdeasSub}</p>
@@ -440,13 +450,39 @@ export default function DraftScreen(props: {
         </section>
       )}
 
-      {/* AO VIVO, FASE DE PICKS: melhores escolhas */}
-      {!training && target !== "ban" && !finished && (
+      {/* AO VIVO, VEZ DO INIMIGO: picks prováveis deles (ou aviso de que os seus acabaram) */}
+      {!training && target === "enemy" && (
+        <section className={`${PANEL} mt-4 p-4`}>
+          <h2 className="font-display text-xl text-white">{t.enemyTurnTitle}</h2>
+          <p className="text-xs text-[var(--soft)]">{mine.length >= TEAM_SIZE ? t.myPicksDone : t.enemyTurnSub}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {enemyIdeas.map((r) => (
+              <button
+                key={r.brawler.id}
+                onClick={() => add(r.brawler.id, "enemy")}
+                title={r.brawler.name}
+                className="flex w-16 flex-col items-center gap-1 rounded-xl border border-[var(--line)] p-1 transition hover:border-red-400"
+              >
+                <Icon brawler={r.brawler} size={48} />
+                <span className="w-full truncate text-center text-[10px] text-white">{r.brawler.name}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* AO VIVO, SUA VEZ: recomendações para ESTE pick */}
+      {!training && target === "mine" && (
         <section className="mt-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-xl text-white" style={outline}>
-              {t.bestPicks}
-            </h2>
+            <div>
+              <h2 className="font-display text-xl text-white">
+                {stage === "first" ? t.stageFirst : stage === "last" ? t.stageLast : t.stageMiddle}
+              </h2>
+              <p className="text-xs text-[var(--soft)]">
+                {stage === "first" ? t.stageFirstTip : stage === "last" ? t.stageLastTip : t.stageMiddleTip}
+              </p>
+            </div>
             <div className="flex gap-2">
               <SmallButton onClick={props.onToggleOnlyOwned}>{props.onlyOwned ? t.onlyMineOn : t.onlyMineOff}</SmallButton>
               <SmallButton onClick={props.onEditOwned}>{t.myBrawlers}</SmallButton>
@@ -462,7 +498,7 @@ export default function DraftScreen(props: {
                   onClick={() => setOpen(open === r.brawler.id ? null : r.brawler.id)}
                   className="flex w-full items-center gap-3 px-3 py-2 text-left"
                 >
-                  <span className="w-6 text-center text-2xl text-[var(--accent)]" style={outline}>
+                  <span className="w-6 text-center font-display text-2xl text-[var(--accent)]">
                     {i + 1}
                   </span>
                   <Icon brawler={r.brawler} size={52} />
@@ -473,7 +509,7 @@ export default function DraftScreen(props: {
                     </span>
                     <span className="block font-sans text-xs text-[var(--soft)]">{r.reasons.join(" · ")}</span>
                   </span>
-                  <span className="rounded-lg border-2 border-black bg-[var(--accent)] px-2 py-1 text-black">{r.score.toFixed(1)}</span>
+                  <span className="rounded-lg font-display bg-[var(--accent)] px-2 py-1 text-black">{r.score.toFixed(1)}</span>
                 </button>
 
                 {/* Detalhe: de onde veio a nota */}
@@ -491,7 +527,7 @@ export default function DraftScreen(props: {
                     {mine.length < TEAM_SIZE && (
                       <button
                         onClick={() => add(r.brawler.id, "mine")}
-                        className="mt-2 rounded-lg border-2 border-black bg-[var(--accent)] px-3 py-1 text-black"
+                        className="mt-2 rounded-lg font-display bg-[var(--accent)] px-3 py-1 text-black"
                       >
                         {t.addToTeam}
                       </button>

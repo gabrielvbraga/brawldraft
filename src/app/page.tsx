@@ -1,17 +1,21 @@
-// Página inicial. Roda no SERVIDOR: busca o meta atual e entrega para o site.
+// Página inicial. Roda no SERVIDOR: busca o meta atual e as contas do coletor.
 
 import App from "@/components/App";
 import { BRAWLERS } from "@/data/brawlers";
 import { MAPS } from "@/data/maps";
 import { getLiveMeta } from "@/lib/livemeta";
+import { getCollected } from "@/lib/stats";
 
-// O meta é guardado por 12 horas dentro de getLiveMeta (veja src/lib/livemeta.ts).
-// Entre uma atualização e outra, todo mundo recebe a versão guardada.
+// O meta é guardado por 12 horas dentro de getLiveMeta (src/lib/livemeta.ts) e as
+// contas do coletor por 1 hora dentro de getCollected (src/lib/stats.ts).
 
 export default async function Home() {
-  const live = await getLiveMeta(
-    MAPS.map((m) => m.gameId),
-    BRAWLERS.map((b) => b.name),
-  );
-  return <App live={live} />;
+  const [live, collected] = await Promise.all([
+    getLiveMeta(
+      MAPS.map((m) => m.gameId),
+      BRAWLERS.map((b) => b.name),
+    ),
+    getCollected(),
+  ]);
+  return <App live={live} collected={collected} />;
 }

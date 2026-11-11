@@ -3,10 +3,9 @@
 // mesma coisa. Cada celular lê a sala a cada 1,5 segundo e envia suas mudanças.
 // Usa só "fetch" (sem biblioteca extra), pela API REST que o Supabase já oferece.
 //
-// Precisa de duas variáveis na Vercel (Settings > Environment Variables):
-//   NEXT_PUBLIC_SUPABASE_URL       -> o "Project URL" do Supabase
-//   NEXT_PUBLIC_SUPABASE_ANON_KEY  -> a chave "anon public" do Supabase
-// E da tabela "rooms", criada com o arquivo supabase.sql.
+// Configuração do Supabase: veja src/lib/supabase.ts. Tabela "rooms": veja supabase.sql.
+
+import { SB_URL as URL_BASE, SUPABASE_ON, sbHeaders } from "./supabase";
 
 export type RoomState = {
   mapId: number; // id do mapa na nossa lista (MAPS)
@@ -17,17 +16,10 @@ export type RoomState = {
   bansDone: boolean;
 };
 
-const URL_BASE = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-
 /** O draft em trio só aparece no site quando o Supabase está configurado. */
-export const ROOMS_ENABLED = URL_BASE !== "" && KEY !== "";
+export const ROOMS_ENABLED = SUPABASE_ON;
 
-const headers = () => ({
-  apikey: KEY,
-  Authorization: `Bearer ${KEY}`,
-  "Content-Type": "application/json",
-});
+const headers = () => sbHeaders();
 
 /** Código curto e fácil de ditar no Discord (sem letras que confundem, como O e 0). */
 export function newRoomCode(): string {

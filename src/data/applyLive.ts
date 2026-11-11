@@ -14,33 +14,37 @@ const SAVED_TOP = new Map(MAPS.map((m) => [m.id, m.top]));
 let appliedAt: string | null = null;
 
 /**
- * Tier a partir da posição no ranking geral ao vivo.
- * Quem está fora do ranking lido mantém o tier salvo, mas sem passar de A
- * (S+ e S ficam só para quem está no topo agora).
+ * Tier pela posição no ranking ao vivo, que já vem ordenado por % DE VITÓRIAS
+ * (o 1º é sempre quem mais vence). Quem não aparece no ranking lido mantém o
+ * tier salvo, mas sem passar de A (S+ e S ficam só para quem está no topo agora).
  */
-function tierFromRank(rank: number, total: number, saved: Tier): Tier {
+function tierFromRank(rank: number, saved: Tier): Tier {
   if (rank < 0) return saved === "S+" || saved === "S" ? "A" : saved;
-  const share = rank / Math.max(total, 1);
-  if (rank < 5) return "S+";
-  if (rank < 12) return "S";
-  if (share < 0.3) return "A";
-  if (share < 0.55) return "B";
-  if (share < 0.8) return "C";
-  return "D";
+  if (rank < 3) return "S+";
+  if (rank < 7) return "S";
+  return "A";
 }
 
 export function applyLive(live: LiveMeta | null) {
   if (!live || live.updatedAt === appliedAt) return;
   appliedAt = live.updatedAt;
 
+  // live.overall já vem do maior para o menor % de vitórias.
   const order = live.overall.map((r) => r.name);
   for (const b of BRAWLERS) {
-    const saved = SAVED_TIER.get(b.id) ?? b.tier;
-    b.tier = tierFromRank(order.indexOf(b.name), order.length, saved);
+    const rank = order.indexOf(b.name);
+    b.tier = tierFromRank(rank, SAVED_TIER.get(b.id) ?? b.tier);
+    b.winRate = rank >= 0 ? live.overall[rank].wins : undefined;
   }
 
   for (const m of MAPS) {
     const rows = live.maps[m.gameId];
-    m.top = rows && rows.length > 0 ? rows.slice(0, 10).map((r) => r.name) : (SAVED_TOP.get(m.id) ?? m.top);
+    if (rows && rows.length > 0) {
+      m.top = rows.slice(0, 10).map((r) => r.name);
+      m.topRates = rows.slice(0, 10).map((r) => r.wins);
+    } else {
+      m.top = SAVED_TOP.get(m.id) ?? m.top;
+      m.topRates = undefined;
+    }
   }
 }
