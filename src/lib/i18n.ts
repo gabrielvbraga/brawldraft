@@ -57,6 +57,30 @@ const pt = {
   partPersonal: "Seu histórico",
   ownedHelp: (n: number, total: number) => `Toque nos Brawlers que você tem. Marcados: ${n} de ${total}.`,
   markAll: "Marcar todos",
+  importTitle: "Importar pela tag do jogo",
+  importHelp: "Sua tag fica no perfil do jogo, embaixo do nome (ex.: #2PP0YQ8).",
+  tagPlaceholder: "#SUATAG",
+  minLevel: "Ignorar abaixo do nível",
+  importButton: "Importar",
+  importing: "Importando...",
+  importOk: (name: string, n: number) => `${name}: ${n} Brawlers marcados.`,
+  importErr: (code: string): string =>
+    code === "not-found"
+      ? "Tag não encontrada. Confira se digitou certo."
+      : code === "no-key"
+        ? "A chave da Supercell ainda não foi configurada no site."
+        : code === "bad-tag"
+          ? "Tag inválida."
+          : "Não consegui falar com a API da Supercell agora. Tente de novo em instantes.",
+  trio: "Draft em trio",
+  trioSub: "Um link para os três do time verem o mesmo draft",
+  roomCode: "Sala",
+  copyLink: "Copiar link",
+  linkCopied: "Link copiado!",
+  roomHelp: "Mande o link para o seu time. Tudo que um marcar aparece para os outros em segundos.",
+  roomCreating: "Criando a sala...",
+  roomError: "Não consegui criar ou abrir a sala. Tente de novo.",
+  roomNotFound: "Sala não encontrada. Peça o link de novo para quem criou.",
   unmarkAll: "Desmarcar todos",
   saveResult: "Salvar no histórico",
   whoPlayed: "Toque no Brawler que você jogou e marque o resultado:",
@@ -155,6 +179,30 @@ const en: Dict = {
   partPersonal: "Your history",
   ownedHelp: (n, total) => `Tap the Brawlers you own. Marked: ${n} of ${total}.`,
   markAll: "Mark all",
+  importTitle: "Import with your player tag",
+  importHelp: "Your tag is on your in-game profile, under your name (e.g. #2PP0YQ8).",
+  tagPlaceholder: "#YOURTAG",
+  minLevel: "Ignore below level",
+  importButton: "Import",
+  importing: "Importing...",
+  importOk: (name, n) => `${name}: ${n} Brawlers marked.`,
+  importErr: (code) =>
+    code === "not-found"
+      ? "Tag not found. Check if you typed it correctly."
+      : code === "no-key"
+        ? "The Supercell key has not been set up on the site yet."
+        : code === "bad-tag"
+          ? "Invalid tag."
+          : "Couldn't reach the Supercell API right now. Try again in a moment.",
+  trio: "Trio draft",
+  trioSub: "One link so all three teammates see the same draft",
+  roomCode: "Room",
+  copyLink: "Copy link",
+  linkCopied: "Link copied!",
+  roomHelp: "Send the link to your team. Anything one of you marks shows up for the others in seconds.",
+  roomCreating: "Creating the room...",
+  roomError: "Couldn't create or open the room. Try again.",
+  roomNotFound: "Room not found. Ask whoever created it for the link again.",
   unmarkAll: "Unmark all",
   saveResult: "Save to history",
   whoPlayed: "Tap the Brawler you played and mark the result:",

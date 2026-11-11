@@ -8,11 +8,13 @@ import { applyLive } from "@/data/applyLive";
 import { BRAWLERS } from "@/data/brawlers";
 import type { LiveMeta } from "@/lib/livemeta";
 import { STR, type Lang } from "@/lib/i18n";
+import { ROOMS_ENABLED, createRoom, newRoomCode, readRoom, type RoomState } from "@/lib/room";
 import { load, personalStats, save, type HistoryEntry } from "@/lib/storage";
+import { MAPS } from "@/data/maps";
 import type { GameMap } from "@/lib/types";
 import DraftScreen from "./DraftScreen";
 import { HistoryScreen, Home, MapPicker, MetaScreen, OwnedScreen } from "./screens";
-import { Shell, THEMES, type ThemeName } from "./ui";
+import { PANEL, Shell, THEMES, type ThemeName } from "./ui";
 
 type Screen = "home" | "maps" | "draft" | "meta" | "history" | "owned";
 
@@ -25,6 +27,10 @@ export default function App(props: { live: LiveMeta | null }) {
   const [training, setTraining] = useState(false);
   const [map, setMap] = useState<GameMap | null>(null);
   const [round, setRound] = useState(0); // aumenta a cada "novo draft", para recomeçar do zero
+  const [trio, setTrio] = useState(false); // escolhendo mapa para um draft em trio?
+  const [room, setRoom] = useState<string | null>(null); // código da sala atual
+  const [roomInit, setRoomInit] = useState<{ state: RoomState; version: number } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null); // aviso rápido (erro de sala etc.)
 
   // Preferências salvas no navegador.
   const [theme, setTheme] = useState<ThemeName>("roxo");
@@ -41,7 +47,52 @@ export default function App(props: { live: LiveMeta | null }) {
     setOwned(load<number[]>("bd-owned", []));
     setOnlyOwned(load<boolean>("bd-only-owned", false));
     setHistory(load<HistoryEntry[]>("bd-history", []));
+
+    // Abriu um link de sala (?sala=CODIGO)? Entra direto no draft em trio.
+    const code = new URLSearchParams(window.location.search).get("sala");
+    if (code && ROOMS_ENABLED) {
+      readRoom(code.toUpperCase()).then((r) => {
+        const m = r ? MAPS.find((x) => x.id === r.state.mapId) : undefined;
+        if (!r || !m) {
+          setNotice(STR[load<string>("bd-lang", "pt") === "en" ? "en" : "pt"].roomNotFound);
+          return;
+        }
+        setTraining(false);
+        setMap(m);
+        setRoom(code.toUpperCase());
+        setRoomInit(r);
+        setRound((n) => n + 1);
+        setScreen("draft");
+      });
+    }
   }, []);
+
+  /** Cria uma sala nova no mapa escolhido e abre o draft. */
+  async function startRoom(m: GameMap) {
+    setNotice(t.roomCreating);
+    const code = newRoomCode();
+    const state: RoomState = { mapId: m.id, first: "mine", bans: [], mine: [], enemies: [], bansDone: false };
+    const ok = await createRoom(code, state);
+    if (!ok) {
+      setNotice(t.roomError);
+      return;
+    }
+    setNotice(null);
+    window.history.replaceState(null, "", `/?sala=${code}`);
+    setMap(m);
+    setRoom(code);
+    setRoomInit({ state, version: 1 });
+    setRound(round + 1);
+    setScreen("draft");
+  }
+
+  /** Sai da sala (volta a ser um draft só deste aparelho). */
+  function leaveRoom() {
+    if (!room) return;
+    setRoom(null);
+    setRoomInit(null);
+    window.history.replaceState(null, "", "/");
+  }
 
   const t = STR[lang];
   const personal = useMemo(() => personalStats(history), [history]);
@@ -69,8 +120,16 @@ export default function App(props: { live: LiveMeta | null }) {
         setLang(l);
         save("bd-lang", l);
       }}
-      onHome={screen === "home" ? undefined : () => setScreen("home")}
+      onHome={
+        screen === "home"
+          ? undefined
+          : () => {
+              leaveRoom();
+              setScreen("home");
+            }
+      }
     >
+      {notice && <p className={`${PANEL} mb-3 px-3 py-2 font-sans text-sm text-white`}>{notice}</p>}
       {screen === "home" && (
         <Home
           t={t}
@@ -78,9 +137,12 @@ export default function App(props: { live: LiveMeta | null }) {
           updatedAt={props.live?.updatedAt ?? null}
           ownedCount={owned.length}
           historyCount={history.length}
-          onGo={(where: "draft" | "train" | "meta" | "history" | "owned") => {
-            if (where === "draft" || where === "train") {
+          showTrio={ROOMS_ENABLED}
+          onGo={(where: "draft" | "train" | "trio" | "meta" | "history" | "owned") => {
+            setNotice(null);
+            if (where === "draft" || where === "train" || where === "trio") {
               setTraining(where === "train");
+              setTrio(where === "trio");
               setScreen("maps");
             } else if (where === "owned") goOwned("home");
             else setScreen(where);
@@ -92,8 +154,13 @@ export default function App(props: { live: LiveMeta | null }) {
         <MapPicker
           t={t}
           lang={lang}
-          title={training ? t.training : t.liveDraft}
+          title={training ? t.training : trio ? t.trio : t.liveDraft}
           onPick={(m: GameMap) => {
+            if (trio) {
+              startRoom(m);
+              return;
+            }
+            leaveRoom();
             setMap(m);
             setRound(round + 1);
             setScreen("draft");
@@ -116,8 +183,17 @@ export default function App(props: { live: LiveMeta | null }) {
             setOnlyOwned(!onlyOwned);
           }}
           onEditOwned={() => goOwned("draft")}
-          onChangeMap={() => setScreen("maps")}
-          onRestart={() => setRound(round + 1)}
+          room={room}
+          initial={roomInit}
+          onChangeMap={() => {
+            setTrio(room !== null); // trocar o mapa numa sala cria uma sala nova
+            leaveRoom();
+            setScreen("maps");
+          }}
+          onRestart={() => {
+            leaveRoom();
+            setRound(round + 1);
+          }}
           onSave={(entry: HistoryEntry) => {
             const next = [...history, entry];
             setHistory(next);
@@ -147,6 +223,7 @@ export default function App(props: { live: LiveMeta | null }) {
           owned={owned}
           onToggle={(id: number) => changeOwned(owned.includes(id) ? owned.filter((x) => x !== id) : [...owned, id])}
           onAll={(all: boolean) => changeOwned(all ? BRAWLERS.map((b) => b.id) : [])}
+          onSet={(ids: number[]) => changeOwned(ids)}
           onDone={() => setScreen(back)}
         />
       )}

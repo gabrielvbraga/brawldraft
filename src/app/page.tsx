@@ -5,9 +5,8 @@ import { BRAWLERS } from "@/data/brawlers";
 import { MAPS } from "@/data/maps";
 import { getLiveMeta } from "@/lib/livemeta";
 
-// A Vercel refaz esta página no máximo a cada 12 horas (60 * 60 * 12 segundos),
-// buscando o meta de novo. Entre uma atualização e outra, todo mundo recebe a versão guardada.
-export const revalidate = 43200;
+// O meta é guardado por 12 horas dentro de getLiveMeta (veja src/lib/livemeta.ts).
+// Entre uma atualização e outra, todo mundo recebe a versão guardada.
 
 export default async function Home() {
   const live = await getLiveMeta(

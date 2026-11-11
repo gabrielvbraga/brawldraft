@@ -2,11 +2,14 @@
 // Lê as páginas de Ranked do topbrawl.com (a geral e uma por mapa) e extrai a
 // lista dos melhores Brawlers de cada uma. Roda no SERVIDOR do site (Vercel).
 //
-// A atualização automática vem do "revalidate": a Vercel guarda o resultado e,
-// depois de 12 horas, busca tudo de novo na próxima visita. Ninguém precisa fazer nada.
+// A atualização automática vem do "use cache" + cacheLife: o Next.js guarda o
+// resultado e, depois de 12 horas, busca tudo de novo na próxima visita.
+// Ninguém precisa fazer nada.
 //
 // Se o topbrawl mudar o layout ou ficar fora do ar, a leitura falha e o site
 // usa os dados salvos nos arquivos de src/data (o site nunca quebra por causa disso).
+
+import { cacheLife } from "next/cache";
 
 export const TWELVE_HOURS = 60 * 60 * 12;
 
@@ -71,7 +74,6 @@ async function fetchPage(url: string): Promise<string | null> {
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": "BrawlDraft (site de fã, atualiza a cada 12h)" },
-      next: { revalidate: TWELVE_HOURS },
     });
     return res.ok ? await res.text() : null;
   } catch {
@@ -84,6 +86,10 @@ async function fetchPage(url: string): Promise<string | null> {
  * (aí o site usa os dados salvos). Um mapa que falhar fica só sem dados novos.
  */
 export async function getLiveMeta(mapIds: number[], knownNames: string[]): Promise<LiveMeta | null> {
+  "use cache";
+  // Guarda o resultado: depois de 12 horas, a próxima visita dispara uma busca nova.
+  cacheLife({ stale: 60 * 60, revalidate: TWELVE_HOURS, expire: TWELVE_HOURS * 14 });
+
   const overallHtml = await fetchPage(BASE);
   const overall = overallHtml ? parseTable(overallHtml, knownNames) : [];
   if (overall.length < 5) return null;

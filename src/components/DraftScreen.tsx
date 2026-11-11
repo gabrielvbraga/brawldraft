@@ -1,12 +1,14 @@
 "use client";
 // TELA DO DRAFT. Serve para os dois modos:
 //   - ao vivo (training = false): você marca tudo e o site recomenda;
-//   - treino (training = true): o site joga pelo inimigo, com relógio e sem dicas.
+//   - treino (training = true): o site joga pelo inimigo, com relógio e sem dicas;
+//   - trio (room = código da sala): igual ao ao vivo, mas sincronizado entre os três do time.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BRAWLERS } from "@/data/brawlers";
 import { nextTurn, recommend, suggestBans, type Side } from "@/lib/engine";
 import { className, modeName, type Dict, type Lang } from "@/lib/i18n";
+import { readRoom, writeRoom, type RoomState } from "@/lib/room";
 import type { HistoryEntry, Personal } from "@/lib/storage";
 import type { Brawler, GameMap } from "@/lib/types";
 import { BrawlerGrid, CARD, Icon, MODE_COLOR, MapThumb, PANEL, Part, SmallButton, Strip, outline } from "./ui";
@@ -38,6 +40,10 @@ export default function DraftScreen(props: {
   onChangeMap: () => void;
   onRestart: () => void; // recomeça o draft do zero
   onSave: (entry: HistoryEntry) => void;
+  /** Código da sala de draft em trio (null = draft só neste aparelho). */
+  room?: string | null;
+  /** Estado inicial vindo da sala (quando alguém entra numa sala que já existe). */
+  initial?: { state: RoomState; version: number } | null;
 }) {
   const { t, lang, map, training } = props;
   const brawlers = BRAWLERS;
@@ -45,18 +51,67 @@ export default function DraftScreen(props: {
 
   // ----- Estado do draft -----
   // No treino, o inimigo já começa com 3 bans e o first pick é sorteado.
+  const init = props.initial?.state;
   const [bans, setBans] = useState<number[]>(() =>
-    training
+    init
+      ? init.bans
+      : training
       ? [...suggestBans(brawlers, map, [], 8)]
           .sort(() => Math.random() - 0.5)
           .slice(0, 3)
           .map((b) => b.id)
       : [],
   );
-  const [first, setFirst] = useState<Side>(() => (training && Math.random() < 0.5 ? "enemy" : "mine"));
-  const [mine, setMine] = useState<number[]>([]);
-  const [enemies, setEnemies] = useState<number[]>([]);
-  const [bansDone, setBansDone] = useState(false);
+  const [first, setFirstLocal] = useState<Side>(() => init?.first ?? (training && Math.random() < 0.5 ? "enemy" : "mine"));
+  const [mine, setMine] = useState<number[]>(init?.mine ?? []);
+  const [enemies, setEnemies] = useState<number[]>(init?.enemies ?? []);
+  const [bansDone, setBansDoneLocal] = useState(init?.bansDone ?? false);
+  const [copied, setCopied] = useState(false);
+
+  // ----- TRIO: sincronização com a sala -----
+  // "version" conta as mudanças da sala. Quem tem o número maior tem o estado mais novo.
+  const version = useRef(props.initial?.version ?? 1);
+  const room = props.room ?? null;
+
+  /** Troca todo o estado do draft de uma vez (usado ao receber a sala). */
+  function applyState(st: RoomState) {
+    setBans(st.bans);
+    setMine(st.mine);
+    setEnemies(st.enemies);
+    setFirstLocal(st.first);
+    setBansDoneLocal(st.bansDone);
+  }
+
+  /** Envia o estado novo para a sala, para os outros dois verem. */
+  function push(changes: Partial<RoomState>) {
+    if (!room) return;
+    const next: RoomState = { mapId: map.id, first, bans, mine, enemies, bansDone, ...changes };
+    version.current += 1;
+    writeRoom(room, next, version.current);
+  }
+
+  // Lê a sala a cada 1,5 segundo e aplica se alguém do time mudou algo.
+  useEffect(() => {
+    if (!room) return;
+    const timer = setInterval(async () => {
+      const remote = await readRoom(room);
+      if (remote && remote.version > version.current) {
+        version.current = remote.version;
+        applyState(remote.state);
+      }
+    }, 1500);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room]);
+
+  function setFirst(side: Side) {
+    setFirstLocal(side);
+    push({ first: side });
+  }
+  function setBansDone(done: boolean) {
+    setBansDoneLocal(done);
+    push({ bansDone: done });
+  }
   const [manual, setManual] = useState<Target | null>(null); // faixa escolhida à mão (só ao vivo)
   const [open, setOpen] = useState<number | null>(null); // recomendação aberta
   const [showAll, setShowAll] = useState(false);
@@ -93,8 +148,14 @@ export default function DraftScreen(props: {
 
   function add(id: number, where: Target | null, timeout = false) {
     if (!where || used.has(id)) return;
-    if (where === "ban" && bans.length < MAX_BANS) setBans([...bans, id]);
-    if (where === "enemy" && enemies.length < TEAM_SIZE) setEnemies([...enemies, id]);
+    if (where === "ban" && bans.length < MAX_BANS) {
+      setBans([...bans, id]);
+      push({ bans: [...bans, id] });
+    }
+    if (where === "enemy" && enemies.length < TEAM_SIZE) {
+      setEnemies([...enemies, id]);
+      push({ enemies: [...enemies, id] });
+    }
     if (where === "mine" && mine.length < TEAM_SIZE) {
       if (training) {
         // Guarda o quanto a sua escolha ficou perto da melhor opção do momento.
@@ -106,15 +167,31 @@ export default function DraftScreen(props: {
         }
       }
       setMine([...mine, id]);
+      push({ mine: [...mine, id] });
     }
     setManual(null);
     setOpen(null);
   }
 
   function remove(id: number) {
-    setBans(bans.filter((x) => x !== id));
-    setMine(mine.filter((x) => x !== id));
-    setEnemies(enemies.filter((x) => x !== id));
+    const next = {
+      bans: bans.filter((x) => x !== id),
+      mine: mine.filter((x) => x !== id),
+      enemies: enemies.filter((x) => x !== id),
+    };
+    setBans(next.bans);
+    setMine(next.mine);
+    setEnemies(next.enemies);
+    push(next);
+  }
+
+  function copyLink() {
+    if (!room) return;
+    const link = `${window.location.origin}/?sala=${room}`;
+    navigator.clipboard?.writeText(link).then(
+      () => setCopied(true),
+      () => setCopied(false),
+    );
   }
 
   // ----- TREINO: relógio -----
@@ -209,6 +286,17 @@ export default function DraftScreen(props: {
           <SmallButton onClick={props.onChangeMap}>{t.changeMap}</SmallButton>
         </div>
       </div>
+
+      {/* TRIO: código da sala e botão para copiar o link */}
+      {room && (
+        <div className={`${PANEL} mt-3 flex flex-wrap items-center justify-between gap-2 px-3 py-2`}>
+          <span className="text-white">
+            {t.roomCode}: <span className="text-2xl tracking-widest text-[var(--accent)]">{room}</span>
+          </span>
+          <SmallButton onClick={copyLink}>{copied ? t.linkCopied : t.copyLink}</SmallButton>
+          <span className="w-full font-sans text-xs text-[var(--soft)]">{t.roomHelp}</span>
+        </div>
+      )}
 
       {/* Quem tem o first pick (no treino é sorteado, então só mostra) */}
       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-white">

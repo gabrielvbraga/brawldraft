@@ -6,7 +6,7 @@ import { BRAWLERS } from "@/data/brawlers";
 import { MAPS } from "@/data/maps";
 import { mapStrength } from "@/lib/engine";
 import { modeName, type Dict, type Lang } from "@/lib/i18n";
-import type { HistoryEntry } from "@/lib/storage";
+import { load, save, type HistoryEntry } from "@/lib/storage";
 import type { Brawler, GameMap } from "@/lib/types";
 import { BrawlerGrid, CARD, INPUT, Icon, MODE_COLOR, MODE_ORDER, MapThumb, PANEL, SmallButton, TIER_COLOR, outline } from "./ui";
 
@@ -18,13 +18,15 @@ export function Home(props: {
   updatedAt: string | null; // quando o meta ao vivo foi lido (null = usando dados salvos)
   ownedCount: number;
   historyCount: number;
-  onGo: (where: "draft" | "train" | "meta" | "history" | "owned") => void;
+  showTrio: boolean; // o draft em trio só aparece com o Supabase configurado
+  onGo: (where: "draft" | "train" | "trio" | "meta" | "history" | "owned") => void;
 }) {
   const { t } = props;
   const hot = BRAWLERS.filter((b) => b.tier === "S+").concat(BRAWLERS.filter((b) => b.tier === "S"));
 
   // Os botões das outras áreas do site (o draft ao vivo fica no botão grande de cima).
   const cards = [
+    ...(props.showTrio ? [{ key: "trio" as const, title: t.trio, sub: t.trioSub, mark: "👥" }] : []),
     { key: "train" as const, title: t.training, sub: t.trainingSub, mark: "⏱" },
     { key: "meta" as const, title: t.metaPage, sub: t.metaPageSub, mark: "★" },
     { key: "history" as const, title: `${t.history} (${props.historyCount})`, sub: t.historySub, mark: "✓" },
@@ -337,9 +339,37 @@ export function OwnedScreen(props: {
   owned: number[];
   onToggle: (id: number) => void;
   onAll: (all: boolean) => void;
+  onSet: (ids: number[]) => void; // troca a lista inteira (usado na importação)
   onDone: () => void;
 }) {
   const { t, owned } = props;
+  const [tag, setTag] = useState(() => load<string>("bd-tag", ""));
+  const [minLevel, setMinLevel] = useState(() => load<number>("bd-min-level", 1));
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  /** Busca os Brawlers do jogador na API oficial (pela nossa rota /api/player). */
+  async function importTag() {
+    setBusy(true);
+    setMessage(null);
+    save("bd-tag", tag);
+    save("bd-min-level", minLevel);
+    try {
+      const res = await fetch(`/api/player?tag=${encodeURIComponent(tag)}`);
+      const data = (await res.json()) as { name?: string; brawlers?: { id: number; power: number }[]; error?: string };
+      if (!res.ok || !data.brawlers) {
+        setMessage({ ok: false, text: t.importErr(data.error ?? "api") });
+      } else {
+        const known = new Set(BRAWLERS.map((b) => b.id));
+        const ids = data.brawlers.filter((b) => b.power >= minLevel && known.has(b.id)).map((b) => b.id);
+        props.onSet(ids);
+        setMessage({ ok: true, text: t.importOk(data.name ?? "", ids.length) });
+      }
+    } catch {
+      setMessage({ ok: false, text: t.importErr("api") });
+    }
+    setBusy(false);
+  }
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
@@ -348,7 +378,47 @@ export function OwnedScreen(props: {
         </h1>
         <SmallButton onClick={props.onDone}>{t.done}</SmallButton>
       </div>
-      <p className="mt-1 text-sm text-[var(--soft)]">{t.ownedHelp(owned.length, BRAWLERS.length)}</p>
+      {/* Importar pela tag */}
+      <section className={`${PANEL} mt-3 p-3`}>
+        <h2 className="text-lg text-white" style={outline}>
+          {t.importTitle}
+        </h2>
+        <p className="font-sans text-xs text-[var(--soft)]">{t.importHelp}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <input
+            value={tag}
+            onChange={(e) => setTag(e.target.value)}
+            placeholder={t.tagPlaceholder}
+            className={`${INPUT} max-w-[180px] uppercase`}
+          />
+          <label className="flex items-center gap-2 font-sans text-xs text-[var(--soft)]">
+            {t.minLevel}
+            <select
+              value={minLevel}
+              onChange={(e) => setMinLevel(Number(e.target.value))}
+              className="rounded-lg border-2 border-[var(--line)] bg-[var(--panel)] px-2 py-2 text-white"
+            >
+              {Array.from({ length: 11 }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            disabled={busy || tag.trim() === ""}
+            onClick={importTag}
+            className="rounded-lg border-2 border-black bg-[var(--accent)] px-4 py-2 text-black disabled:opacity-40"
+          >
+            {busy ? t.importing : t.importButton}
+          </button>
+        </div>
+        {message && (
+          <p className={`mt-2 font-sans text-sm ${message.ok ? "text-green-300" : "text-red-300"}`}>{message.text}</p>
+        )}
+      </section>
+
+      <p className="mt-3 text-sm text-[var(--soft)]">{t.ownedHelp(owned.length, BRAWLERS.length)}</p>
       <div className="my-3 flex gap-2">
         <SmallButton onClick={() => props.onAll(true)}>{t.markAll}</SmallButton>
         <SmallButton onClick={() => props.onAll(false)}>{t.unmarkAll}</SmallButton>
