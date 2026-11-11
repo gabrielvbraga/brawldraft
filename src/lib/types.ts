@@ -18,8 +18,12 @@ export type GameMap = {
   name: string;
   /** Modo em inglês (Gem Grab, Brawl Ball...). */
   mode: string;
-  /** Os 5 Brawlers mais fortes neste mapa, do melhor para o quinto. */
+  /** Os Brawlers mais fortes neste mapa, do melhor para o pior (até 10). */
   top: string[];
+  /** Número do mapa no jogo (15000007...). Usado para a foto e para o meta ao vivo. */
+  gameId: number;
+  /** Foto do mapa (vista de cima). */
+  imageUrl: string | null;
 };
 
 /** Um item do ranking de recomendações. */

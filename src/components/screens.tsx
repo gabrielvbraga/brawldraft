@@ -8,18 +8,20 @@ import { mapStrength } from "@/lib/engine";
 import { modeName, type Dict, type Lang } from "@/lib/i18n";
 import type { HistoryEntry } from "@/lib/storage";
 import type { Brawler, GameMap } from "@/lib/types";
-import { BrawlerGrid, CARD, INPUT, Icon, MODE_COLOR, MODE_ORDER, PANEL, SmallButton, TIER_COLOR, outline } from "./ui";
+import { BrawlerGrid, CARD, INPUT, Icon, MODE_COLOR, MODE_ORDER, MapThumb, PANEL, SmallButton, TIER_COLOR, outline } from "./ui";
 
 // ================= INÍCIO =================
 
 export function Home(props: {
   t: Dict;
+  lang: Lang;
+  updatedAt: string | null; // quando o meta ao vivo foi lido (null = usando dados salvos)
   ownedCount: number;
   historyCount: number;
   onGo: (where: "draft" | "train" | "meta" | "history" | "owned") => void;
 }) {
   const { t } = props;
-  const hot = BRAWLERS.filter((b) => b.tier === "S+" || b.tier === "S").sort((a, b) => a.tier.localeCompare(b.tier) * -1);
+  const hot = BRAWLERS.filter((b) => b.tier === "S+").concat(BRAWLERS.filter((b) => b.tier === "S"));
 
   // Os botões das outras áreas do site (o draft ao vivo fica no botão grande de cima).
   const cards = [
@@ -91,7 +93,12 @@ export function Home(props: {
           </h2>
           <SmallButton onClick={() => props.onGo("owned")}>{`${t.myBrawlers} (${props.ownedCount})`}</SmallButton>
         </div>
-        <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+        <p className="font-sans text-[11px] text-[var(--soft)]">
+          {props.updatedAt
+            ? t.metaUpdated(new Date(props.updatedAt).toLocaleString(props.lang === "pt" ? "pt-BR" : "en-US", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }))
+            : t.metaSaved}
+        </p>
+        <div className="no-scrollbar mt-2 flex gap-2 overflow-x-auto pb-1">
           {hot.map((b) => (
             <div key={b.id} className="flex shrink-0 flex-col items-center gap-1">
               <Icon brawler={b} size={56} />
@@ -136,12 +143,15 @@ export function MapPicker(props: { t: Dict; lang: Lang; title: string; onPick: (
                 <button
                   key={m.id}
                   onClick={() => props.onPick(m)}
-                  className={`${CARD} border-l-8 px-3 py-3 text-left text-white transition hover:brightness-125 active:translate-y-0.5`}
+                  className={`${CARD} flex items-center gap-3 border-l-8 px-2 py-2 text-left text-white transition hover:brightness-125 active:translate-y-0.5`}
                   style={{ borderLeftColor: MODE_COLOR[mode] }}
                 >
-                  <span className="block text-lg leading-tight">{m.name}</span>
-                  <span className="block font-sans text-[11px] text-[var(--soft)]">
-                    {t.highlight}: {m.top.slice(0, 3).join(", ")}
+                  <MapThumb map={m} width={40} />
+                  <span className="min-w-0">
+                    <span className="block text-base leading-tight">{m.name}</span>
+                    <span className="block font-sans text-[11px] text-[var(--soft)]">
+                      {t.highlight}: {m.top.slice(0, 3).join(", ")}
+                    </span>
                   </span>
                 </button>
               ))}
@@ -187,7 +197,10 @@ export function MetaScreen(props: { t: Dict; lang: Lang }) {
           </optgroup>
         ))}
       </select>
-      <p className="mt-2 font-sans text-xs text-[var(--soft)]">{map ? t.metaMapSub : t.metaGeneralSub}</p>
+      <div className="mt-2 flex items-center gap-3">
+        {map && <MapThumb map={map} width={48} />}
+        <p className="font-sans text-xs text-[var(--soft)]">{map ? t.metaMapSub : t.metaGeneralSub}</p>
+      </div>
 
       <div className="mt-3 flex flex-col gap-2">
         {TIERS.map((tier) => {

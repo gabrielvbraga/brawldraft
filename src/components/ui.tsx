@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import type { Dict, Lang } from "@/lib/i18n";
-import type { Brawler } from "@/lib/types";
+import type { Brawler, GameMap } from "@/lib/types";
 
 // ----- Temas de cor. Para criar outro, copie uma linha e troque as cores. -----
 export const THEMES = {
@@ -144,6 +144,34 @@ export function Icon(props: { brawler: Brawler; size: number }) {
     >
       {brawler.name.slice(0, 2).toUpperCase()}
     </span>
+  );
+}
+
+/** Miniatura do mapa. Se a foto falhar, mostra um bloco com a cor do modo. */
+export function MapThumb(props: { map: GameMap; width: number }) {
+  const { map, width } = props;
+  const height = Math.round(width * 1.3); // os mapas são mais altos que largos
+  const [broken, setBroken] = useState(false);
+  if (map.imageUrl && !broken) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={map.imageUrl}
+        alt={map.name}
+        width={width}
+        height={height}
+        loading="lazy"
+        onError={() => setBroken(true)}
+        className="shrink-0 rounded-md border-2 border-black bg-black/40"
+        style={{ width, height, objectFit: "contain" }}
+      />
+    );
+  }
+  return (
+    <span
+      className="shrink-0 rounded-md border-2 border-black opacity-70"
+      style={{ width, height, background: MODE_COLOR[map.mode] ?? "#555" }}
+    />
   );
 }
 

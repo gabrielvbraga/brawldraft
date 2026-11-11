@@ -4,7 +4,9 @@
 // histórico) e mostra a tela certa. "use client" = roda no navegador.
 
 import { useEffect, useMemo, useState } from "react";
+import { applyLive } from "@/data/applyLive";
 import { BRAWLERS } from "@/data/brawlers";
+import type { LiveMeta } from "@/lib/livemeta";
 import { STR, type Lang } from "@/lib/i18n";
 import { load, personalStats, save, type HistoryEntry } from "@/lib/storage";
 import type { GameMap } from "@/lib/types";
@@ -14,7 +16,10 @@ import { Shell, THEMES, type ThemeName } from "./ui";
 
 type Screen = "home" | "maps" | "draft" | "meta" | "history" | "owned";
 
-export default function App() {
+export default function App(props: { live: LiveMeta | null }) {
+  // Atualiza as listas de Brawlers e mapas com o meta ao vivo antes de desenhar a tela.
+  applyLive(props.live);
+
   const [screen, setScreen] = useState<Screen>("home");
   const [back, setBack] = useState<Screen>("home"); // para onde "Meus Brawlers" volta
   const [training, setTraining] = useState(false);
@@ -69,6 +74,8 @@ export default function App() {
       {screen === "home" && (
         <Home
           t={t}
+          lang={lang}
+          updatedAt={props.live?.updatedAt ?? null}
           ownedCount={owned.length}
           historyCount={history.length}
           onGo={(where: "draft" | "train" | "meta" | "history" | "owned") => {

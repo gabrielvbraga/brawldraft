@@ -17,8 +17,8 @@ export type Side = "mine" | "enemy";
 /** Quanto vale cada tier (0 a 10). */
 const TIER_VALUE: Record<Tier, number> = { "S+": 10, S: 9, A: 7.5, B: 6, C: 4.5, D: 3 };
 
-/** Bônus por estar entre os 5 mais fortes do mapa (1º, 2º, 3º, 4º, 5º). */
-const TOP_BONUS = [4, 3.3, 2.6, 2, 1.5];
+/** Bônus por estar entre os 10 mais fortes do mapa (do 1º ao 10º). */
+const TOP_BONUS = [4, 3.5, 3, 2.6, 2.2, 1.9, 1.6, 1.3, 1.1, 0.9];
 
 /** O quanto cada classe costuma render em cada modo (0 a 10). */
 const MODE_FIT: Record<string, Record<string, number>> = {
@@ -70,7 +70,7 @@ function vulnerability(cls: string): number {
 /** Força do Brawler no mapa, sem olhar para os picks: base (meta + modo) e bônus do mapa. */
 export function mapStrength(b: Brawler, map: GameMap) {
   const base = TIER_VALUE[b.tier] * W.tier + (MODE_FIT[map.mode]?.[b.class] ?? 5) * W.mode;
-  const pos = map.top.indexOf(b.name); // -1 quando não está entre os 5
+  const pos = map.top.slice(0, TOP_BONUS.length).indexOf(b.name); // -1 quando não está entre os 10
   return { base, bonus: pos >= 0 ? TOP_BONUS[pos] : 0, pos };
 }
 

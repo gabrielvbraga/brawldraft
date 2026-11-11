@@ -9,7 +9,7 @@ import { nextTurn, recommend, suggestBans, type Side } from "@/lib/engine";
 import { className, modeName, type Dict, type Lang } from "@/lib/i18n";
 import type { HistoryEntry, Personal } from "@/lib/storage";
 import type { Brawler, GameMap } from "@/lib/types";
-import { BrawlerGrid, CARD, Icon, MODE_COLOR, PANEL, Part, SmallButton, Strip, outline } from "./ui";
+import { BrawlerGrid, CARD, Icon, MODE_COLOR, MapThumb, PANEL, Part, SmallButton, Strip, outline } from "./ui";
 
 type Target = "ban" | "mine" | "enemy";
 
@@ -191,7 +191,9 @@ export default function DraftScreen(props: {
     <div>
       {/* Cabeçalho: mapa, modo e botões */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
+        <div className="flex items-center gap-3">
+          <MapThumb map={map} width={44} />
+          <div>
           <h1 className="text-3xl leading-tight text-[var(--accent)]" style={outline}>
             {map.name}
           </h1>
@@ -200,6 +202,7 @@ export default function DraftScreen(props: {
             {modeName(lang, map.mode)}
             {training && <span className="rounded bg-[var(--accent)] px-2 text-black">{t.training}</span>}
           </p>
+          </div>
         </div>
         <div className="flex gap-2">
           <SmallButton onClick={props.onRestart}>{training ? t.trainAgain : t.newDraft}</SmallButton>

@@ -1,26 +1,20 @@
+/* Estilos globais do site. O Tailwind cuida de quase tudo; aqui ficam só os ajustes extras. */
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: #0d0717;
+  color: #ffffff;
+}
+
+/* Esconde a barra de rolagem (a rolagem continua funcionando com o dedo ou o mouse). */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Barra de rolagem da página no tom escuro do site, em vez da branca padrão. */
+html {
+  color-scheme: dark;
 }
