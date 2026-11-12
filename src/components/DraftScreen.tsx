@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BRAWLERS } from "@/data/brawlers";
 import { bestPairs, draftGrade, mapTip, nextTurn, recommend, suggestBans, type PickStage, type Side } from "@/lib/engine";
-import { className, modeName, type Dict, type Lang } from "@/lib/i18n";
+import { className, mapName, modeName, type Dict, type Lang } from "@/lib/i18n";
 import { readRoom, writeRoom, type RoomState } from "@/lib/room";
 import type { HistoryEntry, Personal } from "@/lib/storage";
 import type { Brawler, GameMap } from "@/lib/types";
@@ -360,7 +360,7 @@ export default function DraftScreen(props: {
             <MapImage map={map} height={150} zoomLabel={t.zoomMap} closeLabel={t.close} />
           </div>
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight">{map.name}</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight">{mapName(lang, map.name)}</h1>
             <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-[var(--soft)]">
               <span className="h-2.5 w-2.5 rounded-full" style={{ background: MODE_COLOR[map.mode] }} />
               {modeName(lang, map.mode)}
@@ -488,7 +488,7 @@ export default function DraftScreen(props: {
                 const pick = (ids: number[]) => ids.map((id) => ({ id, name: byId.get(id)?.name ?? "?" }));
                 return draftCard({
                   title: t.cardDraft,
-                  mapName: map.name,
+                  mapName: mapName(lang, map.name),
                   modeLabel: modeName(lang, map.mode),
                   modeColor: MODE_COLOR[map.mode] ?? "#2f6bff",
                   mapGameId: map.gameId,

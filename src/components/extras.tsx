@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { MAPS } from "@/data/maps";
-import type { Dict } from "@/lib/i18n";
+import { mapName, type Dict } from "@/lib/i18n";
 import { disablePush, enablePush, pushState, type PushState } from "@/lib/push";
 import { shareImage } from "@/lib/share";
 import type { HistoryEntry } from "@/lib/storage";
@@ -68,7 +68,7 @@ export function UpgradeCard(props: { t: Dict; tips: UpgradeTip[]; hasRoster: boo
                   {tip.brawler.winRate !== undefined && ` · ${t.upMeta(Math.round(tip.brawler.winRate * 10) / 10)}`}
                 </p>
                 <p className="truncate text-xs text-[var(--faint)]">
-                  {t.upMaps}: {tip.bestMaps.join(", ")}
+                  {t.upMaps}: {tip.bestMaps.map((n) => mapName(t.langCode, n)).join(", ")}
                 </p>
               </div>
             </li>
@@ -90,7 +90,7 @@ export function AlertsCard(props: { t: Dict; lang: string; maps: number[] }) {
     pushState().then(setState);
   }, []);
 
-  const names = props.maps.map((id) => MAPS.find((m) => m.gameId === id)?.name).filter(Boolean);
+  const names = props.maps.map((id) => MAPS.find((m) => m.gameId === id)?.name).filter((n): n is string => !!n).map((n) => mapName(t.langCode, n));
 
   async function toggle() {
     setBusy(true);

@@ -386,6 +386,7 @@ const pt = {
   recMineOther: (wr: number, n: number) => `Você, sem seguir: ${wr}% (${n})`,
   recEmpty: "Salve o resultado no fim dos drafts ao vivo para ver se as sugestões estão funcionando para você.",
   recFollowed: "Seguiu a sugestão",
+  langCode: "pt" as Lang,
   // ---- v12: partida em andamento ----
   watchTitle: "Partida em andamento",
   watchSub: "Boa sorte! Pode ir jogar: quando a partida acabar, o site descobre o resultado sozinho pela sua tag.",
@@ -780,6 +781,7 @@ const en: Dict = {
   recMineOther: (wr: number, n: number) => `You, not following: ${wr}% (${n})`,
   recEmpty: "Save the result at the end of live drafts to see whether the suggestions work for you.",
   recFollowed: "Followed the suggestion",
+  langCode: "en" as Lang,
   watchTitle: "Match in progress",
   watchSub: "Good luck! Go play: when the match ends, the site finds the result by itself through your tag.",
   watchNote: "The game takes a few minutes to show the match after it ends. If you close the site, the result goes into your history when you come back.",
@@ -828,4 +830,54 @@ export function modeName(lang: Lang, mode: string): string {
     Knockout: "Nocaute",
   };
   return names[mode] ?? mode;
+}
+
+/** Nomes oficiais dos mapas do Ranked em português (como aparecem no jogo). */
+const MAP_PT: Record<string, string> = {
+  "Double Swoosh": "Arco Duplo",
+  "Gem Fort": "Forte de Gemas",
+  "Hard Rock Mine": "Mina Rochosa",
+  Undermine: "Ilumina",
+  "Center Stage": "Centro do Palco",
+  "Pinball Dreams": "Pintando o Pinball",
+  "Sneaky Fields": "Campos Ardilosos",
+  "Triple Dribble": "Drible Triplo",
+  "Bridge Too Far": "Ponte Inalcançável",
+  "Hot Potato": "Batata Quente",
+  "Kaboom Canyon": "Ravina Kabum",
+  "Safe Zone": "Zona Segura",
+  "Dueling Beetles": "Besouros Brigões",
+  "Open Business": "Aberto",
+  "Parallel Plays": "Jogadas Paralelas",
+  "Ring of Fire": "Anel de Fogo",
+  "Dry Season": "Estação Seca",
+  Hideout: "Tocaia",
+  "Layer Cake": "Bolo em Camadas",
+  "Shooting Star": "Campo de Tiro",
+  "Belle's Rock": "Rocha da Belle",
+  "Flaring Phoenix": "Fênix Flamejante",
+  "Flowing Springs": "Fontes Fartas",
+  "Goldarm Gulch": "Caverna do Braço Dourado",
+  "New Horizons": "Novos Horizontes",
+  "Out in the Open": "Descampado",
+  // Outros que já passaram pelo Ranked ou podem voltar
+  "Please Remain Standing": "Não Vai Cair, Hein?",
+  "Pinhole Punt": "Tiro de Meta",
+  "Sunny Soccer": "Futebol Ensolarado",
+  "Backyard Bowl": "Bocha",
+  "Beach Ball": "Bola na Orla",
+  "Bottom Two": "Dupla Condenada",
+  "On the Lookout": "De Butuca",
+  "Sunken Harbor": "Porto Submerso",
+  "Reach for the Stars": "O Céu É o Limite",
+  Sectioned: "Fragmentado",
+  Alchemy: "Alquimista",
+  Chivalry: "Cortesia",
+  "Jungle Top": "Cume da Mata",
+  "New Perspective": "Nova Perspectiva",
+};
+
+/** Nome do mapa no idioma escolhido (os dados guardam o nome em inglês). */
+export function mapName(lang: Lang, name: string): string {
+  return lang === "pt" ? (MAP_PT[name] ?? name) : name;
 }

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BRAWLERS } from "@/data/brawlers";
 import { MAPS } from "@/data/maps";
 import { countersOf, matchup } from "@/lib/engine";
-import { modeName, type Dict, type Lang } from "@/lib/i18n";
+import { mapName, modeName, type Dict, type Lang } from "@/lib/i18n";
 import type { RosterItem } from "@/lib/storage";
 import { loadScores, type Score } from "@/lib/supabase";
 import type { Brawler } from "@/lib/types";
@@ -201,7 +201,7 @@ export function LeaderboardScreen(props: { t: Dict; loggedIn: boolean; myId: str
             >
               <span className="w-7 text-center text-lg font-extrabold text-[var(--faint)]">{i + 1}</span>
               <span className="flex-1 font-semibold">{s.nick}</span>
-              <span className="text-xs text-[var(--faint)]">{s.map}</span>
+              <span className="text-xs text-[var(--faint)]">{mapName(t.langCode, s.map)}</span>
               <span className="w-12 text-right text-lg font-extrabold text-[var(--accent)]">{s.score}</span>
             </div>
           ))}

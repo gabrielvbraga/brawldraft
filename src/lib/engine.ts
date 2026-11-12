@@ -11,7 +11,7 @@
 
 import meta from "@/data/meta.json";
 import type { Collected } from "./collector";
-import { STR, className, modeName, type Lang } from "./i18n";
+import { STR, className, mapName, modeName, type Lang } from "./i18n";
 import type { HistoryEntry, Personal } from "./storage";
 import type { Brawler, GameMap, Recommendation, Tier } from "./types";
 
@@ -228,7 +228,7 @@ export function recommend(state: DraftState): Recommendation[] {
 
     // 1) BASE (meta atual + modo) e 2) MAPA
     const s = mapStrength(b, map);
-    if (s.pos >= 0) reasons.push(t.rTop(s.pos + 1, map.name));
+    if (s.pos >= 0) reasons.push(t.rTop(s.pos + 1, mapName(lang, map.name)));
     if (s.real !== null) reasons.push(t.rRealMap(Math.round(s.real * 100)));
     if (b.tier === "S+" || b.tier === "S") reasons.push(t.rTier(b.tier));
     else if (b.tier === "D") reasons.push(t.rWeak);

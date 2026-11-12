@@ -6,7 +6,7 @@ import { BRAWLERS } from "@/data/brawlers";
 import { MAPS } from "@/data/maps";
 import { RANK_BANDS, type Collected } from "@/lib/collector";
 import { mapStrength } from "@/lib/engine";
-import { className, modeName, type Dict, type Lang } from "@/lib/i18n";
+import { className, mapName, modeName, type Dict, type Lang } from "@/lib/i18n";
 import type { LiveMeta } from "@/lib/livemeta";
 import type { MetaDay } from "@/lib/metaChanges";
 import { metaChanges } from "@/lib/metaChanges";
@@ -90,7 +90,7 @@ function MapCard(props: { t: Dict; lang: Lang; map: GameMap; today: boolean; onP
       </div>
       <button onClick={props.onPick} className="flex flex-1 flex-col gap-1 p-3 text-left">
         <span className="flex items-center gap-2">
-          <span className="font-bold">{map.name}</span>
+          <span className="font-bold">{mapName(lang, map.name)}</span>
           {props.today && <Pill bg="var(--good-bg)" color="var(--good)">{t.todayBadge}</Pill>}
         </span>
         <span className="flex items-center gap-1.5 text-xs text-[var(--soft)]">
@@ -298,7 +298,7 @@ export function MapPicker(props: { t: Dict; lang: Lang; title: string; rotation:
   const [search, setSearch] = useState("");
   const q = search.trim().toLowerCase();
   const filtered = MAPS.filter(
-    (m) => m.name.toLowerCase().includes(q) && (!hasRotation || !onlyToday || props.rotation?.has(m.gameId)),
+    (m) => (m.name.toLowerCase().includes(q) || mapName(lang, m.name).toLowerCase().includes(q)) && (!hasRotation || !onlyToday || props.rotation?.has(m.gameId)),
   );
 
   return (
@@ -386,7 +386,7 @@ export function MetaScreen(props: { t: Dict; lang: Lang; live: LiveMeta; collect
               <optgroup key={mode} label={modeName(lang, mode)}>
                 {MAPS.filter((m) => m.mode === mode).map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.name}
+                    {mapName(lang, m.name)}
                   </option>
                 ))}
               </optgroup>
@@ -440,7 +440,7 @@ export function MetaScreen(props: { t: Dict; lang: Lang; live: LiveMeta; collect
                 </div>
               )}
               <div>
-                <span className="font-bold">{map ? map.name : t.topWinRate}</span>
+                <span className="font-bold">{map ? mapName(lang, map.name) : t.topWinRate}</span>
                 <p className="text-xs text-[var(--soft)]">{t.topbrawlNote}</p>
               </div>
             </div>
@@ -714,7 +714,7 @@ export function DraftSetup(props: {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t.mapLabel}</p>
-            <p className="truncate text-lg font-bold">{map.name}</p>
+            <p className="truncate text-lg font-bold">{mapName(lang, map.name)}</p>
             <p className="flex items-center gap-1.5 text-xs text-[var(--soft)]">
               <span className="h-2 w-2 rounded-full" style={{ background: MODE_COLOR[map.mode] }} />
               {modeName(lang, map.mode)}

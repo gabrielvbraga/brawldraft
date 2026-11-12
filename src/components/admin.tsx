@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { BRAWLERS } from "@/data/brawlers";
 import { MAPS } from "@/data/maps";
 import { setOverrides, type Overrides } from "@/lib/engine";
-import { modeName, type Dict, type Lang } from "@/lib/i18n";
+import { mapName, modeName, type Dict, type Lang } from "@/lib/i18n";
 import { loadOverrides, loadVisits, saveOverrides, type Session } from "@/lib/supabase";
 import { CARD, H1, H2, INPUT, PrimaryButton, SUB, SmallButton, choice } from "./ui";
 
@@ -121,7 +121,7 @@ export function AdminScreen(props: { t: Dict; lang: Lang; session: Session | nul
           {MAPS.map((m) => (
             <label key={m.id} className="flex flex-col gap-1 text-sm">
               <span className="font-semibold">
-                {m.name} <span className="font-normal text-[var(--faint)]">· {modeName(lang, m.mode)}</span>
+                {mapName(lang, m.name)} <span className="font-normal text-[var(--faint)]">· {modeName(lang, m.mode)}</span>
               </span>
               <input
                 value={data.tips[String(m.gameId)] ?? ""}

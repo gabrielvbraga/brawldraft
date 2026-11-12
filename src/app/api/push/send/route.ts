@@ -5,6 +5,7 @@
 //   - se o meta mudou muito desde a cópia de ontem, avisa uma vez por dia.
 
 import { MAPS } from "@/data/maps";
+import { mapName } from "@/lib/i18n";
 import type { MetaDay } from "@/lib/metaChanges";
 import { pushDb, type PushSub } from "@/lib/pushdb";
 import { PUSH_ON, sendPush } from "@/lib/webpush";
@@ -58,7 +59,7 @@ export async function GET(request: Request) {
     if (hits.length === 0 && metaNews.length === 0) return;
 
     const fmt = (m: { name: string; delta: number }) => `${m.name} ${m.delta > 0 ? "+" : ""}${String(m.delta).replace(".", en ? "." : ",")}%`;
-    const names = hits.map(nameOf).slice(0, 3).join(", ");
+    const names = hits.map((id) => mapName(en ? "en" : "pt", nameOf(id))).slice(0, 3).join(", ");
     let message: { title: string; body: string; url: string };
     if (hits.length > 0) {
       message = {

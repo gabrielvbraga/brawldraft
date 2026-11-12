@@ -6,7 +6,7 @@ import { useState } from "react";
 import { BRAWLERS } from "@/data/brawlers";
 import { MAPS } from "@/data/maps";
 import { lossReasons } from "@/lib/engine";
-import { modeName, type Dict, type Lang } from "@/lib/i18n";
+import { mapName, modeName, type Dict, type Lang } from "@/lib/i18n";
 import { metaChanges, type MetaDay } from "@/lib/metaChanges";
 import { groupBy, lastDays, type HistoryEntry } from "@/lib/storage";
 import { weekCard } from "@/lib/share";
@@ -64,7 +64,7 @@ export function HistoryScreen(props: {
       winRateLabel: t.winRate,
       best: best && bestB ? { id: bestB.id, name: best[0], line: `${pct(best[1].wins, best[1].games)}% · ${best[1].games}` } : undefined,
       bestLabel: t.reportBestLabel,
-      worstMap: worst ? { name: worst[0], line: `${pct(worst[1].wins, worst[1].games)}% · ${worst[1].games}` } : undefined,
+      worstMap: worst ? { name: mapName(lang, worst[0]), line: `${pct(worst[1].wins, worst[1].games)}% · ${worst[1].games}` } : undefined,
       worstLabel: t.reportWorstLabel,
       days,
       host: window.location.host,
@@ -126,7 +126,7 @@ export function HistoryScreen(props: {
               <Stat label={t.games} value={String(week.length)} />
               <Stat label={t.winRate} value={`${pct(weekWins, week.length)}%`} />
               <Stat label={t.reportBestLabel} value={best ? best[0] : "—"} sub={best ? t.reportBest(best[0], pct(best[1].wins, best[1].games)) : undefined} />
-              <Stat label={t.reportWorstLabel} value={worst ? worst[0] : "—"} sub={worst ? t.reportWorstMap(worst[0], pct(worst[1].wins, worst[1].games)) : undefined} />
+              <Stat label={t.reportWorstLabel} value={worst ? mapName(lang, worst[0]) : "—"} sub={worst ? t.reportWorstMap(mapName(lang, worst[0]), pct(worst[1].wins, worst[1].games)) : undefined} />
             </div>
           )}
           <section className={`${CARD} p-5`}>
@@ -219,7 +219,7 @@ export function HistoryScreen(props: {
                       {h.followed && <Pill bg="var(--good-bg)" color="var(--good)">{t.recFollowed}</Pill>}
                     </span>
                     <span className="block truncate text-xs text-[var(--soft)]">
-                      {h.map} · {modeName(lang, h.mode)}
+                      {mapName(lang, h.map)} · {modeName(lang, h.mode)}
                     </span>
                   </span>
                   <span className="text-xs text-[var(--faint)]">{h.date.slice(0, 10)}</span>
