@@ -31,7 +31,11 @@ export async function GET(request: Request) {
 
   // Diagnóstico: ?raw=1 mostra uma partida de Ranked do jeito que a API manda.
   if (new URL(request.url).searchParams.get("raw") === "1") {
-    return Response.json((r.data.items ?? []).find((it) => it.battle?.type === "soloRanked") ?? null);
+    const all = r.data.items ?? [];
+    const ranked = all.find((it) => it.battle?.type === "soloRanked") ?? null;
+    // Sem Ranked: mostra os tipos das últimas partidas, para saber o que a API está mandando.
+    const types = all.map((it) => `${isoTime(it.battleTime ?? "").slice(0, 16)} ${it.battle?.type ?? "?"} ${it.event?.mode ?? "?"}`);
+    return Response.json({ ranked, last: types });
   }
 
   const me = `#${tag}`;
