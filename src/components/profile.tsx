@@ -176,7 +176,8 @@ export function ProfileScreen(props: {
       {p && data && (
         <>
           {/* Cabeçalho */}
-          <section className={`${CARD} flex flex-wrap items-center gap-4 p-5`}>
+          <section className={`${CARD} flex flex-col gap-4 p-5 md:flex-row md:items-center`}>
+            <div className="flex min-w-0 flex-1 items-start gap-4">
             <PlayerIcon id={p.iconId} size={72} />
             <div className="min-w-0 flex-1">
               <h2 className="flex items-center gap-2 text-2xl font-extrabold tracking-tight">
@@ -191,8 +192,9 @@ export function ProfileScreen(props: {
                 <SmallButton onClick={() => props.onCompare(p.tag)}>{t.pCompare}</SmallButton>
               </div>
             </div>
-            <div className="rounded-2xl bg-[var(--accent-soft)] px-4 py-3 text-right">
-              <p className="flex items-center justify-end gap-1.5 text-xs font-semibold text-[var(--accent)]">
+            </div>
+            <div className="rounded-2xl bg-[var(--accent-soft)] px-4 py-3 md:text-right">
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-[var(--accent)] md:justify-end">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
                   <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
                   <circle cx="12" cy="12" r="3" />
@@ -247,7 +249,7 @@ export function ProfileScreen(props: {
                           {a.icon}
                         </span>
                         <span className="min-w-0">
-                          <span className="block truncate text-sm font-bold">{a.name}</span>
+                          <span className="block text-sm font-bold leading-tight">{a.name}</span>
                           <span className="block text-[11px] leading-tight text-[var(--soft)]">{a.how}</span>
                         </span>
                       </div>
@@ -319,7 +321,7 @@ export function ProfileScreen(props: {
           {/* Brawlers */}
           <section className={`${CARD} p-5`}>
             <h2 className={H2}>{t.pTop}</h2>
-            <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
               {topBrawlers.map((pb) => {
                 const b = BY_ID.get(pb.id);
                 if (!b) return null;
@@ -460,19 +462,19 @@ export function CompareScreen(props: { t: Dict; lang: Lang; myTag: string; initi
           </section>
 
           <section className={`${CARD} overflow-x-auto`}>
-            <table className="w-full min-w-[420px] text-sm">
+            <table className="w-full table-fixed text-sm">
               <tbody>
                 {rows.map((r) => {
                   const vals = pair.map(r.get);
                   return (
                     <tr key={r.label} className="border-b border-[var(--line)] last:border-0">
-                      <td className="px-5 py-3 text-[var(--soft)]">{r.label}</td>
+                      <td className="w-[38%] px-3 py-3 text-xs text-[var(--soft)] sm:w-auto sm:px-5 sm:text-sm">{r.label}</td>
                       {pair.map((d, i) => {
                         const win = vals[i] > vals[1 - i];
                         return (
-                          <td key={i} className={`px-3 py-3 text-right font-bold ${win ? "text-[var(--good)]" : ""}`}>
+                          <td key={i} className={`px-2 py-3 text-right font-bold sm:px-3 ${win ? "text-[var(--good)]" : ""}`}>
                             {r.show ? r.show(d, vals[i]) : nf(vals[i])}
-                            {win && " ▲"}
+                            {win && <span className="ml-0.5 text-[10px]">▲</span>}
                           </td>
                         );
                       })}

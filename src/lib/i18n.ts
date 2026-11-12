@@ -472,7 +472,7 @@ const pt = {
   dPlaceholder: (n: number) => `Digite um Brawler (${n} tentativas)`,
   dClass: "Classe",
   dTier: "Tier",
-  dRelease: "Lançamento",
+  dRelease: "Lançado",
   dWinRate: "% vitórias",
   dLetter: "Inicial",
   dReleaseHint: (c: string): string => (c === "up" ? "Mais novo" : c === "down" ? "Mais antigo" : "Igual"),

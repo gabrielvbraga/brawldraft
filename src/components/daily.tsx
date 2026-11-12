@@ -21,7 +21,7 @@ function Cell(props: { clue: Clue; text: string; label: string }) {
   const arrow = props.clue === "up" ? "▲" : props.clue === "down" ? "▼" : "";
   return (
     <div
-      className="flex min-h-[56px] flex-col items-center justify-center rounded-xl px-1 py-1.5 text-center text-xs font-bold leading-tight text-white"
+      className="flex min-h-[52px] flex-col items-center justify-center rounded-lg px-0.5 py-1 text-center text-[10px] font-bold leading-tight text-white sm:min-h-[56px] sm:rounded-xl sm:px-1 sm:py-1.5 sm:text-xs"
       style={{
         background: bg,
         color: props.clue === "unknown" ? "var(--soft)" : arrowCell ? "var(--warn)" : "#fff",
@@ -164,7 +164,8 @@ export function DailyScreen(props: { t: Dict; lang: Lang; onResult: (won: boolea
 
       {/* Resultado */}
       {game.done && (
-        <section className={`${CARD} flex flex-wrap items-center gap-4 border-2 p-5 ${game.won ? "border-[var(--good)]" : "border-[var(--bad)]"}`}>
+        <section className={`${CARD} flex flex-col gap-4 border-2 p-5 sm:flex-row sm:items-center ${game.won ? "border-[var(--good)]" : "border-[var(--bad)]"}`}>
+          <div className="flex min-w-0 flex-1 items-center gap-4">
           <Icon brawler={answer} size={64} />
           <div className="min-w-0 flex-1">
             <p className={`text-xl font-extrabold ${game.won ? "text-[var(--good)]" : "text-[var(--bad)]"}`}>
@@ -173,6 +174,7 @@ export function DailyScreen(props: { t: Dict; lang: Lang; onResult: (won: boolea
             <p className="text-sm text-[var(--soft)]">{t.dAnswer(answer.name)}</p>
             <p className="text-xs text-[var(--faint)]">{t.dNext(left)}</p>
           </div>
+          </div>
           <SmallButton onClick={share}>{copied ? t.dCopied : `↗ ${t.dShare}`}</SmallButton>
         </section>
       )}
@@ -180,19 +182,21 @@ export function DailyScreen(props: { t: Dict; lang: Lang; onResult: (won: boolea
       {/* Palpites com as pistas */}
       {guesses.length > 0 && (
         <div className="flex flex-col gap-2">
-          <div className="grid grid-cols-[minmax(0,1.3fr)_repeat(5,minmax(0,1fr))] gap-1.5 text-center text-[11px] font-semibold text-[var(--faint)]">
+          <div className="grid grid-cols-[40px_repeat(5,minmax(0,1fr))] gap-1 text-center text-[10px] font-semibold leading-tight text-[var(--faint)] sm:grid-cols-[minmax(0,1.3fr)_repeat(5,minmax(0,1fr))] sm:gap-1.5 sm:text-[11px]">
             <span />
             {heads.map((h) => (
-              <span key={h}>{h}</span>
+              <span key={h} className="break-words">
+                {h}
+              </span>
             ))}
           </div>
           {[...guesses].reverse().map((g) => {
             const c = compare(g, answer);
             return (
-              <div key={g.id} className="grid grid-cols-[minmax(0,1.3fr)_repeat(5,minmax(0,1fr))] items-stretch gap-1.5">
+              <div key={g.id} className="grid grid-cols-[40px_repeat(5,minmax(0,1fr))] items-stretch gap-1 sm:grid-cols-[minmax(0,1.3fr)_repeat(5,minmax(0,1fr))] sm:gap-1.5">
                 <div className="flex min-w-0 items-center gap-2">
                   <Icon brawler={g} size={40} />
-                  <span className="truncate text-sm font-bold">{g.name}</span>
+                  <span className="hidden truncate text-sm font-bold sm:inline">{g.name}</span>
                 </div>
                 <Cell clue={c.cls} text={className(lang, g.class)} label={heads[0]} />
                 <Cell clue={c.tier} text={tierLabel(g)} label={heads[1]} />

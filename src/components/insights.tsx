@@ -16,7 +16,7 @@ export function RankBadge(props: { lang: Lang; rank: number; big?: boolean }) {
   const color = rankColor(props.rank);
   return (
     <span
-      className={`inline-flex items-center gap-2 rounded-xl font-extrabold ${props.big ? "px-4 py-2 text-2xl" : "px-2.5 py-1 text-sm"}`}
+      className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl font-extrabold ${props.big ? "px-4 py-2 text-2xl" : "px-2 py-0.5 text-xs sm:px-2.5 sm:py-1 sm:text-sm"}`}
       style={{ background: `${color}22`, color }}
     >
       <span className={`${props.big ? "h-3 w-3" : "h-2 w-2"} rounded-full`} style={{ background: color }} />
