@@ -5,7 +5,7 @@ import type { HistoryEntry } from "./storage";
 const sorted = (h: HistoryEntry[]) => [...h].sort((a, b) => a.date.localeCompare(b.date));
 
 /** Derrotas seguidas mais recentes (só conta se a última foi nas últimas 3 horas). */
-export function lossStreak(history: HistoryEntry[], now = Date.now()): number {
+export function lossStreak(history: HistoryEntry[], now: number): number {
   const list = sorted(history);
   const last = list[list.length - 1];
   if (!last || last.win || now - Date.parse(last.date) > 3 * 3600 * 1000) return 0;

@@ -1,7 +1,7 @@
 "use client";
 // RANK NO RANKED, ALERTA DE TILT E "COM QUEM VOCÊ GANHA MAIS"
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BRAWLERS } from "@/data/brawlers";
 import type { Dict, Lang } from "@/lib/i18n";
 import { alliesAndRivals, comfortBest, currentRank, lossStreak, rankByDay, type Rate } from "@/lib/insights";
@@ -97,7 +97,10 @@ const DISMISS_KEY = "bd-tilt-hidden";
 
 export function TiltBanner(props: { t: Dict; history: HistoryEntry[] }) {
   const { t } = props;
-  const streak = lossStreak(props.history);
+  // A hora é lida só no navegador (a página é montada antes no servidor).
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => setNow(Date.now()), [props.history]);
+  const streak = now === null ? 0 : lossStreak(props.history, now);
   const ordered = [...props.history].sort((a, b) => a.date.localeCompare(b.date));
   const lastDate = ordered.length ? ordered[ordered.length - 1].date : "";
   // Guarda a data da última partida quando a pessoa tocou em "Entendi": volta a aparecer só depois de outra derrota.
