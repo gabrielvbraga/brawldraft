@@ -37,6 +37,13 @@ import {
   saveUserData,
   signIn,
   signUp,
+  enrollTotp,
+  listFactors,
+  requestPasswordReset,
+  sessionFromLink,
+  unenrollFactor,
+  updatePassword,
+  verifyTotp,
   type RecSummary,
   type Session,
 } from "@/lib/supabase";
@@ -96,6 +103,9 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
   const [compareWith, setCompareWith] = useState<string | null>(null);
   const [duelCode, setDuelCode] = useState<string | null>(null); // duelo aberto por link (?duelo=CODIGO)
   const [siteStats, setSiteStats] = useState<SiteStats>({}); // números do uso do site (conquistas)
+  const [recovery, setRecovery] = useState<Session | null>(null); // veio pelo link "esqueci minha senha"
+  const [mfaOn, setMfaOn] = useState<boolean | null>(null); // verificação em 2 etapas ligada?
+  const mfaPending = useRef<{ session: Session; factorId: string } | null>(null);
   const [room, setRoom] = useState<string | null>(null); // código da sala atual
   const [roomInit, setRoomInit] = useState<{ state: RoomState; version: number } | null>(null);
   const [notice, setNotice] = useState<string | null>(null); // aviso rápido
@@ -127,6 +137,16 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
   const t = STR[lang];
   const personal = useMemo(() => personalStats(history), [history]);
   const comfort = useMemo(() => comfortScores(roster), [roster]);
+  // Verificação em 2 etapas: está ligada nesta conta?
+  useEffect(() => {
+    if (!session) return;
+    let alive = true;
+    listFactors(session).then((f) => alive && setMfaOn(f.some((x) => x.status === "verified")));
+    return () => {
+      alive = false;
+    };
+  }, [session]);
+
   // Vitórias seguindo a sugestão (para as conquistas): contadas pelo histórico.
   useEffect(() => {
     const n = history.filter((h) => h.followed && h.win).length;
@@ -165,6 +185,13 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
     save("bd-stats", next);
     data.current = { ...data.current, stats: next };
     pushToAccount({ stats: next });
+  }
+
+  /** Login completo: guarda a sessão e junta os dados da conta. */
+  async function finishLogin(s: Session) {
+    setSession(s);
+    save("bd-session", s);
+    await syncFromAccount(s, data.current);
   }
 
   /** Busca os dados da conta e junta com os deste aparelho. */
@@ -327,6 +354,23 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
 
     // Histórico automático pela tag.
     if (local.tag) syncBattles();
+
+    // Voltou pelo link do e-mail (esqueci minha senha / confirmação)?
+    if (window.location.hash.includes("access_token=")) {
+      const hash = window.location.hash;
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      sessionFromLink(hash).then((r) => {
+        if (!r) return;
+        if (r.type === "recovery") {
+          setRecovery(r.session);
+          setScreen("account");
+        } else {
+          setSession(r.session);
+          save("bd-session", r.session);
+          syncFromAccount(r.session, data.current);
+        }
+      });
+    }
 
     // Abriu um link de duelo (?duelo=CODIGO) ou do jogo do dia (?jogo=dia)?
     const params = new URLSearchParams(window.location.search);
@@ -655,13 +699,62 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
             const r = create ? await signUp(email, password) : await signIn(email, password);
             if (r.error) return r.error;
             if (r.needsConfirm || !r.session) return "confirm";
+            // Conta com verificação em 2 etapas: pede o código antes de entrar.
+            const factor = (await listFactors(r.session)).find((f) => f.status === "verified");
+            if (factor) {
+              mfaPending.current = { session: r.session, factorId: factor.id };
+              return "mfa";
+            }
+            await finishLogin(r.session);
+            return null;
+          }}
+          onMfaCode={async (code: string) => {
+            const p = mfaPending.current;
+            if (!p) return "erro";
+            const r = await verifyTotp(p.session, p.factorId, code);
+            if (!r.session) return r.error ?? "erro";
+            mfaPending.current = null;
+            await finishLogin(r.session);
+            return null;
+          }}
+          onForgot={(email: string) => requestPasswordReset(email, window.location.origin)}
+          recovery={recovery !== null}
+          onNewPassword={async (password: string) => {
+            const s = recovery ?? (await freshSession(session));
+            if (!s) return "sessão";
+            const err = await updatePassword(s, password);
+            if (err) return err;
+            if (recovery) {
+              setRecovery(null);
+              await finishLogin(recovery);
+            }
+            return null;
+          }}
+          mfaEnabled={mfaOn}
+          onEnableMfa={async () => {
+            const s = await freshSession(session);
+            return s ? enrollTotp(s) : "sessão";
+          }}
+          onConfirmMfa={async (id: string, code: string) => {
+            const s = await freshSession(session);
+            if (!s) return "sessão";
+            const r = await verifyTotp(s, id, code);
+            if (!r.session) return r.error ?? "erro";
             setSession(r.session);
             save("bd-session", r.session);
-            await syncFromAccount(r.session, data.current);
+            setMfaOn(true);
+            return null;
+          }}
+          onDisableMfa={async () => {
+            const s = await freshSession(session);
+            if (!s) return "sessão";
+            for (const f of await listFactors(s)) await unenrollFactor(s, f.id);
+            setMfaOn(false);
             return null;
           }}
           onLogout={() => {
             setSession(null);
+            setMfaOn(null);
             setAdmin(false);
             save("bd-session", null);
           }}

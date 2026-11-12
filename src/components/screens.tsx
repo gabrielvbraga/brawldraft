@@ -1,7 +1,7 @@
 "use client";
 // TELAS PRINCIPAIS: início, escolha de mapa, meta por mapa, "meus Brawlers" e conta.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BRAWLERS } from "@/data/brawlers";
 import { MAPS } from "@/data/maps";
 import { RANK_BANDS, type Collected } from "@/lib/collector";
@@ -577,31 +577,141 @@ export function OwnedScreen(props: {
 
 // ================= CONTA =================
 
+export type MfaSetup = { id: string; qr: string; secret: string };
+
+/** Campo de senha com botão de mostrar/esconder (ajuda a ver erro de digitação no celular). */
+function PasswordInput(props: { t: Dict; value: string; onChange: (v: string) => void; placeholder: string; autoComplete: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <input
+        type={show ? "text" : "password"}
+        value={props.value}
+        onChange={(e) => props.onChange(e.target.value)}
+        placeholder={props.placeholder}
+        className={`${INPUT} w-full pr-24`}
+        autoComplete={props.autoComplete}
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+      />
+      <button
+        type="button"
+        onClick={() => setShow(!show)}
+        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2.5 py-1 text-xs font-semibold text-[var(--accent)]"
+      >
+        {show ? props.t.hidePass : props.t.showPass}
+      </button>
+    </div>
+  );
+}
+
 export function AccountScreen(props: {
   t: Dict;
   enabled: boolean;
   email: string | null;
   nick: string;
-  onLogin: (email: string, password: string, create: boolean) => Promise<string | null>; // devolve erro ou null
+  /** Devolve erro, "confirm" (confirmar e-mail), "mfa" (pedir código) ou null. */
+  onLogin: (email: string, password: string, create: boolean) => Promise<string | null>;
+  onMfaCode: (code: string) => Promise<string | null>;
+  onForgot: (email: string) => Promise<string | null>;
+  /** Veio pelo link do e-mail de recuperação: pede a senha nova. */
+  recovery: boolean;
+  onNewPassword: (password: string) => Promise<string | null>;
+  mfaEnabled: boolean | null;
+  onEnableMfa: () => Promise<MfaSetup | string>;
+  onConfirmMfa: (id: string, code: string) => Promise<string | null>;
+  onDisableMfa: () => Promise<string | null>;
   onLogout: () => void;
   onNick: (nick: string) => void;
 }) {
   const { t } = props;
-  const [create, setCreate] = useState(false);
+  const [mode, setMode] = useState<"login" | "create" | "forgot" | "mfa">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState("");
+  const [code, setCode] = useState("");
   const [nick, setNick] = useState(props.nick);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [setup, setSetup] = useState<MfaSetup | null>(null);
+  const [changing, setChanging] = useState(false);
 
-  async function submit() {
+  // Entrou ou saiu da conta: volta para o login limpo.
+  useEffect(() => {
+    setMode("login");
+    setMessage(null);
+    setPassword("");
+    setPassword2("");
+    setCode("");
+    setSetup(null);
+    setChanging(false);
+  }, [props.email]);
+
+  const errText = (err: string) => (/invalid login credentials/i.test(err) ? t.badLogin : /invalid.*(totp|code)|expired/i.test(err) ? t.mfaWrong : t.authError(err));
+  const show = (err: string | null, okText?: string) => setMessage(err ? { ok: false, text: errText(err) } : okText ? { ok: true, text: okText } : null);
+
+  async function run(fn: () => Promise<void>) {
     setBusy(true);
     setMessage(null);
-    const err = await props.onLogin(email.trim(), password, create);
+    await fn();
     setBusy(false);
-    if (err === "confirm") setMessage({ ok: true, text: t.confirmEmail });
-    else if (err) setMessage({ ok: false, text: t.authError(err) });
   }
+
+  const login = () =>
+    run(async () => {
+      const err = await props.onLogin(email.trim().toLowerCase(), password, mode === "create");
+      if (err === "confirm") setMessage({ ok: true, text: t.confirmEmail });
+      else if (err === "mfa") {
+        setMode("mfa");
+        setCode("");
+      } else show(err);
+    });
+
+  const sendCode = () => run(async () => show(await props.onMfaCode(code.trim())));
+
+  const forgot = () =>
+    run(async () => {
+      const err = await props.onForgot(email.trim().toLowerCase());
+      show(err, t.forgotSent);
+    });
+
+  const savePassword = () =>
+    run(async () => {
+      if (password.length < 6) return setMessage({ ok: false, text: t.passShort });
+      if (password !== password2) return setMessage({ ok: false, text: t.passMismatch });
+      const err = await props.onNewPassword(password);
+      show(err, t.passSaved);
+      if (!err) {
+        setPassword("");
+        setPassword2("");
+        setChanging(false);
+      }
+    });
+
+  const codeInput = (
+    <input
+      value={code}
+      onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+      inputMode="numeric"
+      autoComplete="one-time-code"
+      placeholder={t.mfaCode}
+      className={`${INPUT} text-center text-2xl font-bold tracking-[0.4em]`}
+      aria-label={t.mfaCode}
+    />
+  );
+  const msg = message && <p className={`text-sm ${message.ok ? "text-[var(--good)]" : "text-[var(--bad)]"}`}>{message.text}</p>;
+
+  // ---- Senha nova (link do e-mail ou "trocar senha") ----
+  const newPasswordForm = (
+    <div className="flex flex-col gap-3">
+      <PasswordInput t={t} value={password} onChange={setPassword} placeholder={t.newPass} autoComplete="new-password" />
+      <PasswordInput t={t} value={password2} onChange={setPassword2} placeholder={t.newPass2} autoComplete="new-password" />
+      <PrimaryButton onClick={savePassword} disabled={busy || password.length < 6}>
+        {t.savePass}
+      </PrimaryButton>
+    </div>
+  );
 
   return (
     <div className="mx-auto max-w-md">
@@ -610,39 +720,132 @@ export function AccountScreen(props: {
 
       {!props.enabled ? (
         <p className={`${CARD} mt-4 p-4 text-sm text-[var(--soft)]`}>{t.accountsOff}</p>
-      ) : props.email ? (
+      ) : props.recovery ? (
         <div className={`${CARD} mt-4 flex flex-col gap-3 p-5`}>
-          <p className="font-semibold">{t.loggedAs(props.email)}</p>
-          <p className="text-sm text-[var(--good)]">{t.synced}</p>
-          <label className="mt-2 flex flex-col gap-1 text-xs font-semibold text-[var(--soft)]">
-            {t.nick}
-            <input value={nick} maxLength={20} onChange={(e) => setNick(e.target.value)} placeholder={t.nickPlaceholder} className={INPUT} />
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <PrimaryButton onClick={() => props.onNick(nick.trim())} disabled={nick.trim().length < 2}>
-              {t.saveNick}
-            </PrimaryButton>
-            <SmallButton onClick={props.onLogout}>{t.logout}</SmallButton>
+          <h2 className="text-lg font-bold">{t.newPassTitle}</h2>
+          {newPasswordForm}
+          {msg}
+        </div>
+      ) : props.email ? (
+        <div className="mt-4 flex flex-col gap-4">
+          <div className={`${CARD} flex flex-col gap-3 p-5`}>
+            <p className="font-semibold">{t.loggedAs(props.email)}</p>
+            <p className="text-sm text-[var(--good)]">{t.synced}</p>
+            <label className="mt-2 flex flex-col gap-1 text-xs font-semibold text-[var(--soft)]">
+              {t.nick}
+              <input value={nick} maxLength={20} onChange={(e) => setNick(e.target.value)} placeholder={t.nickPlaceholder} className={INPUT} />
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <PrimaryButton onClick={() => props.onNick(nick.trim())} disabled={nick.trim().length < 2}>
+                {t.saveNick}
+              </PrimaryButton>
+              <SmallButton onClick={() => setChanging(!changing)}>{t.changePass}</SmallButton>
+              <SmallButton onClick={props.onLogout}>{t.logout}</SmallButton>
+            </div>
+            {changing && newPasswordForm}
           </div>
+
+          {/* Verificação em 2 etapas */}
+          <div className={`${CARD} flex flex-col gap-3 p-5`}>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="font-bold">{t.mfaTitle}</h2>
+              {props.mfaEnabled !== null && (
+                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${props.mfaEnabled ? "bg-[var(--good-bg)] text-[var(--good)]" : "bg-[var(--sunken)] text-[var(--soft)]"}`}>
+                  {props.mfaEnabled ? `✓ ${t.mfaOn}` : t.mfaOff}
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-[var(--soft)]">{t.mfaSub}</p>
+            {setup ? (
+              <div className="flex flex-col gap-3">
+                <p className="text-sm">{t.mfaScan}</p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={setup.qr} alt="QR code" width={180} height={180} className="self-center rounded-xl bg-white p-2" />
+                <div className="flex items-center gap-2">
+                  <code className="min-w-0 flex-1 break-all rounded-lg bg-[var(--sunken)] px-3 py-2 text-xs">{setup.secret}</code>
+                  <SmallButton onClick={() => navigator.clipboard?.writeText(setup.secret)}>{t.copyKey}</SmallButton>
+                </div>
+                <p className="text-sm">{t.mfaEnter}</p>
+                {codeInput}
+                <PrimaryButton
+                  onClick={() =>
+                    run(async () => {
+                      const err = await props.onConfirmMfa(setup.id, code.trim());
+                      show(err, t.mfaDone);
+                      if (!err) setSetup(null);
+                    })
+                  }
+                  disabled={busy || code.length !== 6}
+                >
+                  {t.mfaConfirm}
+                </PrimaryButton>
+              </div>
+            ) : props.mfaEnabled ? (
+              <SmallButton onClick={() => run(async () => show(await props.onDisableMfa(), t.mfaOffDone))} disabled={busy}>
+                {t.mfaDisable}
+              </SmallButton>
+            ) : (
+              <PrimaryButton
+                onClick={() =>
+                  run(async () => {
+                    const r = await props.onEnableMfa();
+                    if (typeof r === "string") show(r);
+                    else {
+                      setSetup(r);
+                      setCode("");
+                    }
+                  })
+                }
+                disabled={busy || props.mfaEnabled === null}
+              >
+                {t.mfaEnable}
+              </PrimaryButton>
+            )}
+          </div>
+          {msg}
+        </div>
+      ) : mode === "mfa" ? (
+        <div className={`${CARD} mt-4 flex flex-col gap-3 p-5`}>
+          <h2 className="text-lg font-bold">{t.mfaLoginTitle}</h2>
+          <p className="text-sm text-[var(--soft)]">{t.mfaLoginSub}</p>
+          {codeInput}
+          <PrimaryButton onClick={sendCode} disabled={busy || code.length !== 6}>
+            {t.mfaConfirm}
+          </PrimaryButton>
+          <button onClick={() => setMode("login")} className="text-sm font-semibold text-[var(--accent)] hover:underline">
+            {t.backToLogin}
+          </button>
+          {msg}
+        </div>
+      ) : mode === "forgot" ? (
+        <div className={`${CARD} mt-4 flex flex-col gap-3 p-5`}>
+          <h2 className="text-lg font-bold">{t.forgotTitle}</h2>
+          <p className="text-sm text-[var(--soft)]">{t.forgotSub}</p>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.email} className={INPUT} autoComplete="email" autoCapitalize="none" />
+          <PrimaryButton onClick={forgot} disabled={busy || !email.includes("@")}>
+            {t.forgotSend}
+          </PrimaryButton>
+          <button onClick={() => setMode("login")} className="text-sm font-semibold text-[var(--accent)] hover:underline">
+            {t.backToLogin}
+          </button>
+          {msg}
         </div>
       ) : (
         <div className={`${CARD} mt-4 flex flex-col gap-3 p-5`}>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.email} className={INPUT} autoComplete="email" />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder={t.password}
-            className={INPUT}
-            autoComplete={create ? "new-password" : "current-password"}
-          />
-          <PrimaryButton onClick={submit} disabled={busy || !email.includes("@") || password.length < 6}>
-            {create ? t.createAccount : t.login}
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.email} className={INPUT} autoComplete="email" autoCapitalize="none" autoCorrect="off" />
+          <PasswordInput t={t} value={password} onChange={setPassword} placeholder={t.password} autoComplete={mode === "create" ? "new-password" : "current-password"} />
+          <PrimaryButton onClick={login} disabled={busy || !email.includes("@") || password.length < 6}>
+            {mode === "create" ? t.createAccount : t.login}
           </PrimaryButton>
-          <button onClick={() => setCreate(!create)} className="text-sm font-semibold text-[var(--accent)] hover:underline">
-            {create ? t.haveAccount : t.noAccount}
+          {mode === "login" && (
+            <button type="button" onClick={() => setMode("forgot")} className="text-sm font-semibold text-[var(--soft)] hover:underline">
+              {t.forgot}
+            </button>
+          )}
+          <button type="button" onClick={() => setMode(mode === "create" ? "login" : "create")} className="text-sm font-semibold text-[var(--accent)] hover:underline">
+            {mode === "create" ? t.haveAccount : t.noAccount}
           </button>
-          {message && <p className={`text-sm ${message.ok ? "text-[var(--good)]" : "text-[var(--bad)]"}`}>{message.text}</p>}
+          {msg}
         </div>
       )}
     </div>

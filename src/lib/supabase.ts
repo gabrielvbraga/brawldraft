@@ -93,6 +93,122 @@ async function auth(path: string, body: unknown): Promise<{ session: Session | n
 export const signUp = (email: string, password: string) => auth("signup", { email, password });
 export const signIn = (email: string, password: string) => auth("token?grant_type=password", { email, password });
 
+// ============== ESQUECI MINHA SENHA ==============
+
+/** Manda o e-mail com o link para criar uma senha nova. */
+export async function requestPasswordReset(email: string, redirectTo: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${SB_URL}/auth/v1/recover?redirect_to=${encodeURIComponent(redirectTo)}`, {
+      method: "POST",
+      headers: sbHeaders(),
+      body: JSON.stringify({ email }),
+    });
+    if (res.ok) return null;
+    const r = (await res.json().catch(() => ({}))) as AuthReply;
+    return r.error_description ?? r.msg ?? r.message ?? "erro";
+  } catch {
+    return "rede";
+  }
+}
+
+/** Quem clicou no link do e-mail volta com a sessão no endereço (#access_token=...&type=recovery). */
+export async function sessionFromLink(hash: string): Promise<{ session: Session; type: string } | null> {
+  const q = new URLSearchParams(hash.replace(/^#/, ""));
+  const access = q.get("access_token");
+  const refresh = q.get("refresh_token");
+  if (!access || !refresh) return null;
+  try {
+    const res = await fetch(`${SB_URL}/auth/v1/user`, { headers: sbHeaders(access) });
+    if (!res.ok) return null;
+    const u = (await res.json()) as { id: string; email: string };
+    return {
+      type: q.get("type") ?? "",
+      session: {
+        access_token: access,
+        refresh_token: refresh,
+        expires_at: Math.floor(Date.now() / 1000) + Number(q.get("expires_in") ?? 3600),
+        user: { id: u.id, email: u.email },
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Troca a senha de quem está logado (ou veio pelo link do e-mail). */
+export async function updatePassword(s: Session, password: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${SB_URL}/auth/v1/user`, { method: "PUT", headers: sbHeaders(s.access_token), body: JSON.stringify({ password }) });
+    if (res.ok) return null;
+    const r = (await res.json().catch(() => ({}))) as AuthReply;
+    return r.error_description ?? r.msg ?? r.message ?? "erro";
+  } catch {
+    return "rede";
+  }
+}
+
+// ============== VERIFICAÇÃO EM 2 ETAPAS (app autenticador) ==============
+
+export type Factor = { id: string; factor_type: string; status: string };
+
+/** Fatores de 2 etapas da conta (só os "verified" valem). */
+export async function listFactors(s: Session): Promise<Factor[]> {
+  try {
+    const res = await fetch(`${SB_URL}/auth/v1/user`, { headers: sbHeaders(s.access_token), cache: "no-store" });
+    if (!res.ok) return [];
+    const u = (await res.json()) as { factors?: Factor[] };
+    return (u.factors ?? []).filter((f) => f.factor_type === "totp");
+  } catch {
+    return [];
+  }
+}
+
+/** Começa a ativação: devolve o QR code para escanear no app autenticador. */
+export async function enrollTotp(s: Session): Promise<{ id: string; qr: string; secret: string } | string> {
+  try {
+    // Fatores começados e não terminados atrapalham: apaga antes.
+    for (const f of await listFactors(s)) if (f.status !== "verified") await unenrollFactor(s, f.id);
+    const res = await fetch(`${SB_URL}/auth/v1/factors`, {
+      method: "POST",
+      headers: sbHeaders(s.access_token),
+      body: JSON.stringify({ factor_type: "totp", friendly_name: `BrawlDraft ${Date.now()}`, issuer: "BrawlDraft" }),
+    });
+    const r = (await res.json()) as { id?: string; totp?: { qr_code?: string; secret?: string } } & AuthReply;
+    if (!res.ok || !r.id || !r.totp?.qr_code) return r.error_description ?? r.msg ?? r.message ?? "erro";
+    return { id: r.id, qr: r.totp.qr_code, secret: r.totp.secret ?? "" };
+  } catch {
+    return "rede";
+  }
+}
+
+/** Confere o código de 6 dígitos. Se der certo, devolve a sessão nova (com as 2 etapas). */
+export async function verifyTotp(s: Session, factorId: string, code: string): Promise<{ session: Session | null; error: string | null }> {
+  try {
+    const ch = await fetch(`${SB_URL}/auth/v1/factors/${factorId}/challenge`, { method: "POST", headers: sbHeaders(s.access_token), body: "{}" });
+    const c = (await ch.json()) as { id?: string } & AuthReply;
+    if (!ch.ok || !c.id) return { session: null, error: c.error_description ?? c.msg ?? c.message ?? "erro" };
+    const res = await fetch(`${SB_URL}/auth/v1/factors/${factorId}/verify`, {
+      method: "POST",
+      headers: sbHeaders(s.access_token),
+      body: JSON.stringify({ challenge_id: c.id, code }),
+    });
+    const r = (await res.json()) as AuthReply;
+    if (!res.ok) return { session: null, error: r.error_description ?? r.msg ?? r.message ?? "erro" };
+    return { session: toSession(r), error: null };
+  } catch {
+    return { session: null, error: "rede" };
+  }
+}
+
+export async function unenrollFactor(s: Session, factorId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${SB_URL}/auth/v1/factors/${factorId}`, { method: "DELETE", headers: sbHeaders(s.access_token) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Renova a sessão se ela estiver para vencer. Devolve null se não der mais. */
 export async function freshSession(s: Session | null): Promise<Session | null> {
   if (!s) return null;

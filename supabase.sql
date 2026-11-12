@@ -219,3 +219,21 @@ revoke execute on function public.note_rank(text, integer) from public, anon, au
 alter table user_data add column if not exists stats jsonb not null default '{}'::jsonb;
 alter table user_data drop constraint if exists stats_tamanho;
 alter table user_data add constraint stats_tamanho check (pg_column_size(stats) < 2000) not valid;
+
+-- 14) VERIFICAÇÃO EM 2 ETAPAS (v15)
+-- Quem ligou a verificação em 2 etapas só lê e grava os próprios dados depois de digitar
+-- o código do app autenticador (sessão "aal2"). Quem não ligou continua como antes.
+drop policy if exists "exige 2 etapas" on user_data;
+create policy "exige 2 etapas" on user_data as restrictive for all to authenticated
+using (
+  array[(select auth.jwt()->>'aal')] <@ (
+    select case when count(id) > 0 then array['aal2'] else array['aal1', 'aal2'] end
+    from auth.mfa_factors where user_id = (select auth.uid()) and status = 'verified'
+  )
+)
+with check (
+  array[(select auth.jwt()->>'aal')] <@ (
+    select case when count(id) > 0 then array['aal2'] else array['aal1', 'aal2'] end
+    from auth.mfa_factors where user_id = (select auth.uid()) and status = 'verified'
+  )
+);
