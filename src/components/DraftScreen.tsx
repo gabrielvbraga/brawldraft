@@ -127,24 +127,6 @@ export default function DraftScreen(props: {
   const [open, setOpen] = useState<number | null>(null); // recomendação aberta
   const [showAll, setShowAll] = useState(false);
   const [options, setOptions] = useState(false); // painel "Opções" (first pick, solo/duo, dica, filtros)
-  // MODO RÁPIDO (celular): tela enxuta com botões grandes. Lembra a escolha neste aparelho.
-  const [quick, setQuickState] = useState<boolean>(() => {
-    try {
-      return typeof window !== "undefined" && localStorage.getItem("bd-quick") === "1";
-    } catch {
-      return false;
-    }
-  });
-  function setQuick(on: boolean) {
-    setQuickState(on);
-    try {
-      localStorage.setItem("bd-quick", on ? "1" : "0");
-    } catch {
-      // sem armazenamento: vale só agora
-    }
-  }
-  const [stack, setStack] = useState<number[]>([]); // ordem das escolhas (para o "Desfazer")
-  const [quickSearch, setQuickSearch] = useState(false);
   const [left, setLeft] = useState(TURN_SECONDS); // segundos restantes (treino)
   const [log, setLog] = useState<TrainLog[]>([]);
   const [played, setPlayed] = useState<number | null>(null); // Brawler que você jogou
@@ -205,7 +187,6 @@ export default function DraftScreen(props: {
 
   function add(id: number, where: Target | null, timeout = false) {
     if (!where || used.has(id)) return;
-    setStack((st) => [...st, id]);
     if (where === "ban" && bans.length < MAX_BANS) {
       setBans([...bans, id]);
       push({ bans: [...bans, id] });
@@ -371,153 +352,6 @@ export default function DraftScreen(props: {
   const stageTitle = stage === "first" ? t.stageFirst : stage === "last" ? t.stageLast : t.stageMiddle;
   const stageTip = stage === "first" ? t.stageFirstTip : stage === "last" ? t.stageLastTip : t.stageMiddleTip;
 
-  // ================= MODO RÁPIDO =================
-  if (quick && !training) {
-    const undo = () => {
-      const last = [...stack].reverse().find((id) => used.has(id));
-      if (last === undefined) return;
-      remove(last);
-      setStack(stack.filter((id) => id !== last));
-    };
-    const banner =
-      target === "mine"
-        ? { bg: "var(--accent)", text: t.quickYour(mine.length + 1) }
-        : target === "enemy"
-          ? { bg: "var(--bad)", text: t.quickEnemy(enemies.length + 1) }
-          : target === "ban"
-            ? { bg: "#6b7280", text: t.quickBans(bans.length, MAX_BANS) }
-            : { bg: "var(--good)", text: t.statusDone };
-    const big = (b: Brawler, onClick: () => void, sub?: string, score?: string, best = false) => (
-      <button
-        key={b.id}
-        onClick={onClick}
-        className={`${CARD} flex w-full items-center gap-3 p-3 text-left transition active:scale-[0.98] ${best ? "ring-2 ring-[var(--accent)]" : ""}`}
-      >
-        <Icon brawler={b} size={64} />
-        <span className="min-w-0 flex-1">
-          <span className="block text-xl font-extrabold leading-tight">{b.name}</span>
-          {sub && <span className="block truncate text-xs text-[var(--soft)]">{sub}</span>}
-        </span>
-        {score && <span className="rounded-lg bg-[var(--accent-soft)] px-2.5 py-1 text-lg font-bold text-[var(--accent)]">{score}</span>}
-      </button>
-    );
-    const slots = (ids: number[], n: number, color: string, size: number) => (
-      <div className="flex gap-1.5">
-        {Array.from({ length: n }, (_, i) => {
-          const b = ids[i] !== undefined ? byId.get(ids[i]) : undefined;
-          return b ? (
-            <Icon key={i} brawler={b} size={size} />
-          ) : (
-            <span key={i} className="rounded-lg border-2 border-dashed" style={{ width: size, height: size, borderColor: color, opacity: 0.4 }} />
-          );
-        })}
-      </div>
-    );
-    const showSearch = quickSearch || target === "enemy" || target === "ban";
-    return (
-      <div className="mx-auto flex max-w-md flex-col gap-3">
-        {/* Topo: mapa, sair, desfazer */}
-        <div className="flex items-center gap-2">
-          <span className="min-w-0 flex-1">
-            <span className="block text-[11px] font-semibold uppercase tracking-wider text-[var(--accent)]">⚡ {t.quickMode}</span>
-            <span className="block truncate font-bold">
-              {mapName(lang, map.name)} · <span className="font-normal text-[var(--soft)]">{modeName(lang, map.mode)}</span>
-            </span>
-          </span>
-          <SmallButton onClick={undo} disabled={stack.length === 0}>↶ {t.undo}</SmallButton>
-          <SmallButton onClick={() => setQuick(false)}>{t.quickExit}</SmallButton>
-        </div>
-
-        {/* De quem é a vez */}
-        <div className="rounded-2xl px-4 py-3 text-center text-lg font-extrabold text-white" style={{ background: banner.bg }}>
-          {banner.text}
-        </div>
-
-        {/* Times */}
-        <div className={`${CARD} flex items-center justify-between gap-2 p-3`}>
-          {slots(mine, TEAM_SIZE, "var(--accent)", 46)}
-          <span className="text-xs font-bold text-[var(--faint)]">VS</span>
-          {slots(enemies, TEAM_SIZE, "var(--bad)", 46)}
-        </div>
-        {bans.length > 0 && (
-          <div className="flex items-center gap-2 px-1">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t.banned}</span>
-            <div className="flex gap-1 opacity-60">{bans.map((id) => byId.get(id) && <Icon key={id} brawler={byId.get(id) as Brawler} size={26} />)}</div>
-          </div>
-        )}
-
-        {/* Sua vez: as 3 melhores, um toque escolhe */}
-        {target === "mine" && (
-          <div className="flex flex-col gap-2">
-            {ranking.slice(0, 3).map((r, i) => big(r.brawler, () => add(r.brawler.id, "mine"), r.reasons[0], r.score.toFixed(1), i === 0))}
-            {!quickSearch && (
-              <button onClick={() => setQuickSearch(true)} className="py-2 text-sm font-semibold text-[var(--accent)]">
-                {t.quickOther}
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Vez do inimigo: os prováveis primeiro */}
-        {target === "enemy" && (
-          <div className="grid grid-cols-4 gap-2">
-            {enemyIdeas.slice(0, 4).map((r) => (
-              <button key={r.brawler.id} onClick={() => add(r.brawler.id, "enemy")} className={`${CARD} flex flex-col items-center gap-1 p-2 active:scale-95`}>
-                <Icon brawler={r.brawler} size={52} />
-                <span className="w-full truncate text-center text-xs font-semibold">{r.brawler.name}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Bans: os mais fortes no mapa primeiro */}
-        {target === "ban" && (
-          <div className="flex flex-col gap-2">
-            <div className="grid grid-cols-4 gap-2">
-              {banIdeas.slice(0, 4).map((b) => (
-                <button key={b.id} onClick={() => add(b.id, "ban")} className={`${CARD} flex flex-col items-center gap-1 p-2 active:scale-95`}>
-                  <Icon brawler={b} size={52} />
-                  <span className="w-full truncate text-center text-xs font-semibold">{b.name}</span>
-                </button>
-              ))}
-            </div>
-            <button onClick={() => setBansDone(true)} className="py-1 text-sm font-semibold text-[var(--accent)]">
-              {t.bansDone}
-            </button>
-          </div>
-        )}
-
-        {/* Procurar qualquer Brawler */}
-        {!finished && showSearch && (
-          <BrawlerGrid
-            brawlers={brawlers}
-            placeholder={t.searchBrawler}
-            state={(b: Brawler) => (used.has(b.id) ? "dim" : "normal")}
-            disabled={(b: Brawler) => used.has(b.id) || !target}
-            onPick={(b: Brawler) => {
-              add(b.id, target);
-              setQuickSearch(false);
-            }}
-          />
-        )}
-
-        {/* Fim: nota e partida em andamento */}
-        {finished && finalGrade && (
-          <div className={`${CARD} flex items-center gap-4 p-4`}>
-            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--accent)] text-3xl font-extrabold text-white">{finalGrade.letter}</span>
-            <span>
-              <span className="block font-bold">{t.gTitle}</span>
-              <span className="text-sm text-[var(--soft)]">{t.gChance(finalGrade.chance)}</span>
-            </span>
-          </div>
-        )}
-        {finished && props.tag && (
-          <MatchWatch t={t} lang={lang} map={map} tag={props.tag} mine={mine} followed={followed} onSave={props.onSave} onManual={() => setQuick(false)} />
-        )}
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-4">
       {/* Cabeçalho: foto do mapa, nome, modo e botões */}
@@ -536,7 +370,6 @@ export default function DraftScreen(props: {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {!training && <SmallButton onClick={() => setQuick(true)}>⚡ {t.quickMode}</SmallButton>}
           {!training && (
             <SmallButton onClick={() => setOptions(!options)}>
               {options ? "✕ " : "⚙ "}
