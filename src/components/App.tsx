@@ -14,6 +14,7 @@ import type { LiveMeta } from "@/lib/livemeta";
 import type { MetaDay } from "@/lib/metaChanges";
 import { ROOMS_ENABLED, createRoom, newRoomCode, readRoom, type RoomState } from "@/lib/room";
 import {
+  cleanHistory,
   comfortScores,
   load,
   mergeHistory,
@@ -41,6 +42,8 @@ import {
 } from "@/lib/supabase";
 import { refreshPush, registerWorker } from "@/lib/push";
 import { goodMaps } from "@/lib/upgrade";
+import type { Match } from "@/lib/matches";
+import { findDraftMatch, type PendingDraft } from "@/lib/pending";
 import type { GameMap } from "@/lib/types";
 import DraftScreen from "./DraftScreen";
 import { AdminScreen } from "./admin";
@@ -149,6 +152,7 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
       nick: remote.nick || local.nick,
     };
     setHistory(merged.history);
+    if (merged.history.length !== (remote.history as HistoryEntry[]).length) pushToAccount({ history: merged.history });
     setOwned(merged.owned);
     setRoster(merged.roster);
     setFree6(merged.free6);
@@ -174,18 +178,7 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
     setSyncMessage(null);
     try {
       const res = await fetch(`/api/battles?tag=${encodeURIComponent(myTag)}`);
-      const json = (await res.json()) as {
-        items?: {
-          date: string;
-          mapGameId: number;
-          mapName: string;
-          win: boolean;
-          played: number;
-          playedPower: number;
-          team: number[];
-          enemies: number[];
-        }[];
-      };
+      const json = (await res.json()) as { items?: Match[] };
       if (res.ok && json.items) {
         save("bd-last-sync", Date.now());
         const name = (id: number) => BY_ID.get(id)?.name ?? "?";
@@ -200,13 +193,27 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
               team: it.team.map(name),
               enemies: it.enemies.map(name),
               win: it.win,
+              rounds: it.rounds,
               source: "auto" as const,
             };
           })
           .filter((e) => e.mode !== ""); // só os mapas do Ranked que o site conhece
-        const before = new Set(data.current.history.map((h) => h.date));
-        const added = entries.filter((e) => !before.has(e.date)).length;
+        // Draft ao vivo que terminou com o site fechado: liga o "seguiu a sugestão" à partida.
+        const pending = load<PendingDraft | null>("bd-pending-draft", null);
+        if (pending) {
+          const hit = findDraftMatch(json.items, pending);
+          if (hit) {
+            const e = entries.find((x) => x.date === hit.date);
+            const followed = pending.followed[hit.played];
+            if (e && followed !== undefined) e.followed = followed;
+            save("bd-pending-draft", null);
+            const s = data.current.session;
+            if (s && followed !== undefined && e) saveRecResult(s, { followed, win: e.win, map: e.map, brawler: e.played });
+          } else if (Date.now() - pending.at > 3 * 3600 * 1000) save("bd-pending-draft", null);
+        }
+        const beforeCount = data.current.history.length;
         const merged = mergeHistory(data.current.history, entries);
+        const added = Math.max(0, merged.length - beforeCount);
         setHistory(merged);
         save("bd-history", merged);
         if (added > 0) pushToAccount({ history: merged });
@@ -240,7 +247,7 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
     const savedLang: Lang = load<string>("bd-lang", "pt") === "en" ? "en" : "pt";
     setLang(savedLang);
     const local = {
-      history: load<HistoryEntry[]>("bd-history", []),
+      history: cleanHistory(load<HistoryEntry[]>("bd-history", [])),
       owned: load<number[]>("bd-owned", []),
       roster: load<RosterItem[]>("bd-roster", []),
       free6: load<number[]>("bd-free6", []),
@@ -500,6 +507,7 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
             leaveRoom();
             setRound(round + 1);
           }}
+          tag={tag}
           onSave={(entry: HistoryEntry) => {
             const s = data.current.session;
             if (s && entry.followed !== undefined)

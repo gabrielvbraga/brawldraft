@@ -2,6 +2,7 @@
 // As últimas partidas de RANKED do jogador (a API guarda só as 25 mais recentes de
 // todos os modos). Usada no histórico automático, na comparação de amigos e no relatório.
 
+import { groupRounds, type Round } from "@/lib/matches";
 import { cleanTag, scApi } from "@/lib/supercell";
 
 type RawItem = {
@@ -39,7 +40,7 @@ export async function GET(request: Request) {
   }
 
   const me = `#${tag}`;
-  const items = [];
+  const items: Round[] = [];
   for (const it of r.data.items ?? []) {
     const b = it.battle;
     if (!b || b.type !== "soloRanked" || !b.teams || b.teams.length !== 2) continue;
@@ -63,5 +64,6 @@ export async function GET(request: Request) {
       enemies: ids(b.teams[1 - mine]),
     });
   }
-  return Response.json({ tag, items });
+  // Cada round vira uma linha na API; aqui eles viram partidas (melhor de 3).
+  return Response.json({ tag, items: groupRounds(items) }, { headers: { "Cache-Control": "no-store" } });
 }

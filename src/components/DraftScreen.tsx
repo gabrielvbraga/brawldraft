@@ -13,7 +13,9 @@ import { readRoom, writeRoom, type RoomState } from "@/lib/room";
 import type { HistoryEntry, Personal } from "@/lib/storage";
 import type { Brawler, GameMap } from "@/lib/types";
 import { draftCard } from "@/lib/share";
+import { save } from "@/lib/storage";
 import { ShareButton } from "./extras";
+import { MatchWatch } from "./matchwatch";
 import { BrawlerGrid, CARD, INPUT, Icon, MODE_COLOR, MapImage, PANEL, Part, Pill, PrimaryButton, SmallButton, Strip, choice } from "./ui";
 
 type Target = "ban" | "mine" | "enemy";
@@ -47,6 +49,8 @@ export default function DraftScreen(props: {
   onChangeMap: () => void;
   onRestart: () => void; // recomeça o draft do zero
   onSave: (entry: HistoryEntry) => void;
+  /** Tag do jogador: com ela, o site descobre sozinho o resultado da partida. */
+  tag?: string;
   /** Código da sala de draft em trio (null = draft só neste aparelho). */
   room?: string | null;
   /** Estado inicial vindo da sala (quando alguém entra numa sala que já existe). */
@@ -134,6 +138,7 @@ export default function DraftScreen(props: {
   const [scoreSent, setScoreSent] = useState(false);
   // Para "as sugestões funcionam?": cada pick seu era uma das 3 primeiras sugestões?
   const [followed, setFollowed] = useState<Record<number, boolean>>({});
+  const [manualResult, setManualResult] = useState(false); // marcar o resultado na mão
 
   // De quem é a vez, pela ordem do Ranked.
   const turn = nextTurn(first, mine.length, enemies.length);
@@ -340,6 +345,7 @@ export default function DraftScreen(props: {
       ...(played !== null && played in followed ? { followed: followed[played] } : {}),
     });
     setSavedResult(true);
+    save("bd-pending-draft", null);
   }
 
   const stageTitle = stage === "first" ? t.stageFirst : stage === "last" ? t.stageLast : t.stageMiddle;
@@ -519,10 +525,25 @@ export default function DraftScreen(props: {
         </section>
       )}
 
-      {/* AO VIVO, DRAFT COMPLETO: salvar o resultado no histórico */}
-      {!training && finished && (
+      {/* AO VIVO, DRAFT COMPLETO: com a tag, espera a partida acabar e pega o resultado sozinho */}
+      {!training && finished && props.tag && !manualResult && (
+        <MatchWatch
+          t={t}
+          lang={lang}
+          map={map}
+          tag={props.tag}
+          mine={mine}
+          followed={followed}
+          onSave={props.onSave}
+          onManual={() => setManualResult(true)}
+        />
+      )}
+
+      {/* Sem tag (ou escolheu marcar na mão): quem jogou e se venceu */}
+      {!training && finished && (!props.tag || manualResult) && (
         <section className={`${CARD} p-5`}>
           <h2 className="text-xl font-bold">{t.saveResult}</h2>
+          {!props.tag && <p className="text-xs text-[var(--faint)]">{t.watchNoTag}</p>}
           {savedResult ? (
             <p className="mt-2 text-sm font-medium text-[var(--good)]">{t.saved}</p>
           ) : (

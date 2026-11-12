@@ -210,6 +210,7 @@ export function HistoryScreen(props: {
                 <button onClick={() => setOpen(isOpen ? null : h.date)} className="flex w-full items-center gap-3 px-4 py-3 text-left">
                   <Pill bg={h.win ? "var(--good-bg)" : "var(--bad-bg)"} color={h.win ? "var(--good)" : "var(--bad)"}>
                     {h.win ? t.win : t.loss}
+                    {h.rounds ? ` ${h.rounds[0]}-${h.rounds[1]}` : ""}
                   </Pill>
                   {b && <Icon brawler={b} size={34} />}
                   <span className="min-w-0 flex-1">

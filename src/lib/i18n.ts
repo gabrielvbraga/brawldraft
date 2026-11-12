@@ -386,6 +386,24 @@ const pt = {
   recMineOther: (wr: number, n: number) => `Você, sem seguir: ${wr}% (${n})`,
   recEmpty: "Salve o resultado no fim dos drafts ao vivo para ver se as sugestões estão funcionando para você.",
   recFollowed: "Seguiu a sugestão",
+  // ---- v12: partida em andamento ----
+  watchTitle: "Partida em andamento",
+  watchSub: "Boa sorte! Pode ir jogar: quando a partida acabar, o site descobre o resultado sozinho pela sua tag.",
+  watchNote: "O jogo leva alguns minutos para mostrar a partida depois que ela acaba. Se fechar o site, o resultado entra no histórico quando você voltar.",
+  watchPartial: (w: number, l: number) => `Placar até agora: ${w}-${l}`,
+  watchCheck: "Verificar agora",
+  watchChecking: "Verificando…",
+  watchManual: "Marcar o resultado na mão",
+  watchTimeout: "Ainda não achei a partida. Ela entra no histórico sozinha quando aparecer, ou marque na mão.",
+  watchNoTag: "Vincule sua tag em Meus Brawlers e o site descobre o resultado sozinho.",
+  elapsed: (m: number) => `${m} min`,
+  resWin: "Parabéns, vitória!",
+  resLoss: "Não foi dessa vez",
+  resScore: (w: number, l: number) => `Placar: ${w}-${l}`,
+  resPlayed: (n: string) => `Você jogou de ${n}.`,
+  resFollowed: "Ele era uma das 3 primeiras sugestões do site.",
+  resNotFollowed: "Você escolheu fora das 3 primeiras sugestões.",
+  resSaved: "Salvo no seu histórico.",
 };
 
 export type Dict = typeof pt;
@@ -762,6 +780,23 @@ const en: Dict = {
   recMineOther: (wr: number, n: number) => `You, not following: ${wr}% (${n})`,
   recEmpty: "Save the result at the end of live drafts to see whether the suggestions work for you.",
   recFollowed: "Followed the suggestion",
+  watchTitle: "Match in progress",
+  watchSub: "Good luck! Go play: when the match ends, the site finds the result by itself through your tag.",
+  watchNote: "The game takes a few minutes to show the match after it ends. If you close the site, the result goes into your history when you come back.",
+  watchPartial: (w: number, l: number) => `Score so far: ${w}-${l}`,
+  watchCheck: "Check now",
+  watchChecking: "Checking…",
+  watchManual: "Enter the result by hand",
+  watchTimeout: "I haven't found the match yet. It goes into your history by itself when it shows up, or enter it by hand.",
+  watchNoTag: "Link your tag in My Brawlers and the site finds the result by itself.",
+  elapsed: (m: number) => `${m} min`,
+  resWin: "Congrats, you won!",
+  resLoss: "Not this time",
+  resScore: (w: number, l: number) => `Score: ${w}-${l}`,
+  resPlayed: (n: string) => `You played ${n}.`,
+  resFollowed: "It was one of the site's top 3 suggestions.",
+  resNotFollowed: "You picked outside the top 3 suggestions.",
+  resSaved: "Saved to your history.",
 };
 
 export const STR: Record<Lang, Dict> = { pt, en };

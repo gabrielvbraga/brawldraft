@@ -14,6 +14,8 @@ export type HistoryEntry = {
   source?: "auto" | "manual";
   /** Marcada no fim do draft: o Brawler jogado era uma das 3 primeiras sugestões do site? */
   followed?: boolean;
+  /** Placar em rounds [vencidos, perdidos] (o Ranked é melhor de 3). */
+  rounds?: [number, number];
 };
 
 /** Um Brawler do jogador, como vem da importação pela tag. */
@@ -53,8 +55,63 @@ export function personalStats(history: HistoryEntry[]): Personal {
 /** Junta dois históricos sem repetir partidas (a data identifica cada uma). */
 export function mergeHistory(a: HistoryEntry[], b: HistoryEntry[]): HistoryEntry[] {
   const byDate = new Map<string, HistoryEntry>();
-  for (const h of [...a, ...b]) byDate.set(h.date, h);
-  return [...byDate.values()].sort((x, y) => x.date.localeCompare(y.date));
+  for (const h of [...a, ...b]) {
+    const old = byDate.get(h.date);
+    // A versão mais nova vale, mas sem perder o "seguiu a sugestão" da antiga.
+    byDate.set(h.date, old ? { ...old, ...h, followed: h.followed ?? old.followed } : h);
+  }
+  return cleanHistory([...byDate.values()]);
+}
+
+const sideKey = (names: string[]) => [...names].sort().join(",");
+const ROUND_GAP = 20 * 60 * 1000;
+const MANUAL_GAP = 45 * 60 * 1000;
+
+/**
+ * Arruma o histórico:
+ *  1) rounds da mesma partida (mesmo mapa, mesmos 6 Brawlers, poucos minutos de diferença)
+ *     viram uma partida só — o Ranked é melhor de 3 e a API manda cada round separado;
+ *  2) um resultado marcado na mão no fim do draft some quando a partida de verdade chega
+ *     pela tag (o "seguiu a sugestão" passa para ela).
+ */
+export function cleanHistory(list: HistoryEntry[]): HistoryEntry[] {
+  const sorted = [...list].sort((x, y) => x.date.localeCompare(y.date));
+  const autos: HistoryEntry[] = [];
+  const manuals: HistoryEntry[] = [];
+  for (const h of sorted) {
+    if (h.source !== "auto") {
+      manuals.push(h);
+      continue;
+    }
+    const cur = autos[autos.length - 1];
+    const same =
+      cur &&
+      cur.map === h.map &&
+      sideKey(cur.team) === sideKey(h.team) &&
+      sideKey(cur.enemies) === sideKey(h.enemies) &&
+      Date.parse(h.date) - Date.parse(cur.date) <= ROUND_GAP;
+    if (!same) {
+      autos.push({ ...h });
+      continue;
+    }
+    const a: [number, number] = cur.rounds ?? (cur.win ? [1, 0] : [0, 1]);
+    const b: [number, number] = h.rounds ?? (h.win ? [1, 0] : [0, 1]);
+    // Rounds soltos (versão antiga do histórico) somam; partidas já juntadas: fica a mais completa.
+    const rounds: [number, number] =
+      !cur.rounds || !h.rounds ? [a[0] + b[0], a[1] + b[1]] : a[0] + a[1] >= b[0] + b[1] ? a : b;
+    cur.rounds = rounds;
+    cur.win = rounds[0] !== rounds[1] ? rounds[0] > rounds[1] : h.win;
+    cur.played = h.played;
+    cur.followed = cur.followed ?? h.followed;
+  }
+  const keptManual: HistoryEntry[] = [];
+  for (const m of manuals) {
+    const t = Date.parse(m.date);
+    const real = autos.find((h) => h.map === m.map && h.played === m.played && Math.abs(Date.parse(h.date) - t) <= MANUAL_GAP);
+    if (real) real.followed = real.followed ?? m.followed;
+    else keptManual.push(m);
+  }
+  return [...autos, ...keptManual].sort((x, y) => x.date.localeCompare(y.date));
 }
 
 /** Quem conta como "seu" no Ranked: nível 11 (pela tag) + os 6 grátis da temporada. */
