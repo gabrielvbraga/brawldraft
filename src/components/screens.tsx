@@ -14,7 +14,6 @@ import type { RosterItem } from "@/lib/storage";
 import type { RecSummary } from "@/lib/supabase";
 import type { Brawler, GameMap } from "@/lib/types";
 import { upgradeAdvice } from "@/lib/upgrade";
-import { RecCard } from "./extras";
 import { UpgradeCard } from "./extras";
 import {
   BrawlerGrid,
@@ -81,7 +80,7 @@ function RateTable(props: { t: Dict; lang: Lang; rows: { name: string; wins: num
 }
 
 /** Cartão de mapa com foto grande. */
-function MapCard(props: { t: Dict; lang: Lang; map: GameMap; today: boolean; onPick: () => void; height?: number }) {
+function MapCard(props: { t: Dict; lang: Lang; map: GameMap; today: boolean; onPick: () => void; height?: number; compact?: boolean }) {
   const { t, lang, map } = props;
   return (
     <div className={`${CARD} flex flex-col overflow-hidden transition hover:border-[var(--accent)]`}>
@@ -91,15 +90,17 @@ function MapCard(props: { t: Dict; lang: Lang; map: GameMap; today: boolean; onP
       <button onClick={props.onPick} className="flex flex-1 flex-col gap-1 p-3 text-left">
         <span className="flex items-center gap-2">
           <span className="font-bold">{mapName(lang, map.name)}</span>
-          {props.today && <Pill bg="var(--good-bg)" color="var(--good)">{t.todayBadge}</Pill>}
+          {props.today && !props.compact && <Pill bg="var(--good-bg)" color="var(--good)">{t.todayBadge}</Pill>}
         </span>
         <span className="flex items-center gap-1.5 text-xs text-[var(--soft)]">
           <span className="h-2 w-2 rounded-full" style={{ background: MODE_COLOR[map.mode] }} />
           {modeName(lang, map.mode)}
         </span>
-        <span className="text-xs text-[var(--faint)]">
-          {t.highlight}: {map.top.slice(0, 3).join(", ")}
-        </span>
+        {!props.compact && (
+          <span className="text-xs text-[var(--faint)]">
+            {t.highlight}: {map.top.slice(0, 3).join(", ")}
+          </span>
+        )}
       </button>
     </div>
   );
@@ -143,8 +144,12 @@ export function Home(props: {
     { key: "compare" as const, title: t.compareTitle, sub: t.compareSub },
   ];
 
+  const [mode, setMode] = useState<string>(() => MODE_ORDER.find((m) => shownMaps.some((x) => x.mode === m)) ?? MODE_ORDER[0]);
+  const modeMaps = shownMaps.filter((m) => m.mode === mode);
+  const hasChanges = !!changes && (changes.up.length > 0 || changes.down.length > 0);
+
   return (
-    <div className="flex flex-col gap-12">
+    <div className="flex flex-col gap-10">
       {/* ABERTURA + NÚMEROS */}
       <section className="flex flex-wrap items-stretch gap-8">
         <div className="flex flex-[1_1_520px] flex-col justify-center gap-5">
@@ -181,91 +186,65 @@ export function Home(props: {
         </div>
       </section>
 
-      {/* RANKING + ATALHOS */}
+      {/* MAPAS: um modo por vez */}
+      <section className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className={H2}>{today && today.size ? t.rotationToday : t.rotation}</h2>
+            <p className={SUB}>{t.rotationSub}</p>
+          </div>
+        </div>
+        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+          {MODE_ORDER.filter((m) => shownMaps.some((x) => x.mode === m)).map((m) => (
+            <button key={m} onClick={() => setMode(m)} className={`${choice(mode === m)} flex shrink-0 items-center gap-2`}>
+              <span className="h-2 w-2 rounded-full" style={{ background: MODE_COLOR[m] }} />
+              {modeName(lang, m)}
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {modeMaps.map((m) => (
+            <MapCard key={m.id} t={t} lang={lang} map={m} today={!!today?.has(m.gameId)} onPick={() => props.onPickMap(m)} height={170} compact />
+          ))}
+        </div>
+      </section>
+
+      {/* META (top 5) + O QUE MUDOU */}
       <section className="flex flex-wrap gap-5">
-        <div className={`${CARD} flex-[2_1_560px] overflow-hidden`}>
+        <div className={`${CARD} flex-[2_1_520px] overflow-hidden`}>
           <div className="flex items-center justify-between border-b border-[var(--line)] px-5 py-4">
             <span className="font-bold">{t.topWinRate}</span>
             <button onClick={() => props.onGo("meta")} className="text-sm font-semibold text-[var(--accent)] hover:underline">
               {t.seeAll}
             </button>
           </div>
-          <RateTable t={t} lang={lang} rows={live.overall.slice(0, 10)} />
+          <RateTable t={t} lang={lang} rows={live.overall.slice(0, 5)} />
         </div>
-        <div className="flex flex-[1_1_300px] flex-col gap-3">
+        {hasChanges && changes && (
+          <div className={`${CARD} flex-[1_1_280px] p-5`}>
+            <h2 className="font-bold">{t.metaMoves}</h2>
+            <div className="mt-3 flex flex-col gap-4">
+              <MoveList title={t.metaUp} items={changes.up.slice(0, 3).map((m) => `${m.name} +${m.delta.toFixed(1)}%`)} good />
+              <MoveList title={t.metaDown} items={changes.down.slice(0, 3).map((m) => `${m.name} ${m.delta.toFixed(1)}%`)} />
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* MAIS FERRAMENTAS (uma linha) */}
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--faint)]">{t.moreTools}</h2>
+        <div className="flex flex-wrap gap-2">
           {features.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => props.onGo(f.key)}
-              className={`${CARD} group flex items-center gap-3.5 p-4 text-left transition hover:border-[var(--accent)]`}
-            >
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent)]">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
-                  <path d="M5 12h14M13 6l6 6-6 6" />
-                </svg>
-              </span>
-              <span className="min-w-0">
-                <span className="block font-bold">{f.title}</span>
-                <span className="block text-xs text-[var(--soft)]">{f.sub}</span>
-              </span>
+            <button key={f.key} onClick={() => props.onGo(f.key)} className={`${CARD} px-4 py-2.5 text-sm font-semibold transition hover:border-[var(--accent)]`}>
+              {f.title}
             </button>
           ))}
         </div>
       </section>
 
-      {/* O QUE MUDOU NO META */}
-      <section className={`${CARD} p-5`}>
-        <h2 className={H2}>{t.metaMoves}</h2>
-        {changes ? (
-          <div className="mt-3 grid gap-4 sm:grid-cols-2">
-            <MoveList title={t.metaUp} items={changes.up.map((m) => `${m.name} +${m.delta.toFixed(1)}%`)} good />
-            <MoveList title={t.metaDown} items={changes.down.map((m) => `${m.name} ${m.delta.toFixed(1)}%`)} />
-            {changes.entered.length > 0 && <MoveList title={t.metaEntered} items={changes.entered} good />}
-            {changes.left.length > 0 && <MoveList title={t.metaLeft} items={changes.left} />}
-          </div>
-        ) : (
-          <p className={`${SUB} mt-2`}>{t.metaMovesEmpty}</p>
-        )}
-      </section>
-
-      {/* AS SUGESTÕES FUNCIONAM? (aparece com 20+ resultados de quem seguiu) */}
-      {props.recSummary && props.recSummary.followed.games >= 20 && <RecCard t={t} history={[]} summary={props.recSummary} globalOnly />}
-
-      {/* MAPAS */}
-      <section className="flex flex-col gap-4">
-        <div>
-          <h2 className={H2}>{today && today.size ? t.rotationToday : t.rotation}</h2>
-          <p className={SUB}>{t.rotationSub}</p>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {shownMaps.map((m) => (
-            <MapCard key={m.id} t={t} lang={lang} map={m} today={!!today?.has(m.gameId)} onPick={() => props.onPickMap(m)} />
-          ))}
-        </div>
-      </section>
-
-      {/* COMO FUNCIONA */}
-      <section>
-        <h2 className={H2}>{t.howTitle}</h2>
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          {[
-            [t.how1, t.how1Sub],
-            [t.how2, t.how2Sub],
-            [t.how3, t.how3Sub],
-          ].map(([title, sub], i) => (
-            <div key={title} className={`${CARD} p-5`}>
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--accent-soft)] font-extrabold text-[var(--accent)]">
-                {i + 1}
-              </span>
-              <span className="mt-3 block font-bold">{title}</span>
-              <span className="text-sm text-[var(--soft)]">{sub}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-
       {props.showTrio && !props.loggedIn && (
-        <section className={`${CARD} flex flex-col items-center gap-3 p-6 text-center sm:flex-row sm:text-left`}>
+        <section className={`${CARD} flex flex-col items-center gap-3 p-5 text-center sm:flex-row sm:text-left`}>
           <p className="flex-1 text-sm">{t.joinCta}</p>
           <PrimaryButton onClick={() => props.onGo("account")}>{t.createAccount}</PrimaryButton>
         </section>

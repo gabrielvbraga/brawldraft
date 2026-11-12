@@ -126,6 +126,7 @@ export default function DraftScreen(props: {
   const [manual, setManual] = useState<Target | null>(null); // faixa escolhida à mão (só ao vivo)
   const [open, setOpen] = useState<number | null>(null); // recomendação aberta
   const [showAll, setShowAll] = useState(false);
+  const [options, setOptions] = useState(false); // painel "Opções" (first pick, solo/duo, dica, filtros)
   const [left, setLeft] = useState(TURN_SECONDS); // segundos restantes (treino)
   const [log, setLog] = useState<TrainLog[]>([]);
   const [played, setPlayed] = useState<number | null>(null); // Brawler que você jogou
@@ -298,7 +299,7 @@ export default function DraftScreen(props: {
             : t.statusEnemy
           : t.statusDone;
 
-  const top = ranking.slice(0, showAll ? 15 : 5);
+  const top = ranking.slice(0, showAll ? 15 : 3);
   const myBans = training ? Math.max(0, bans.length - 3) : bans.length; // só para o texto do treino
 
   // Nota final do treino (0 a 100) e a letra correspondente.
@@ -369,15 +370,63 @@ export default function DraftScreen(props: {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          {!training && (
+            <SmallButton onClick={() => setOptions(!options)}>
+              {options ? "✕ " : "⚙ "}
+              {t.options}
+            </SmallButton>
+          )}
           <SmallButton onClick={props.onRestart}>{training ? t.trainAgain : t.newDraft}</SmallButton>
           <SmallButton onClick={props.onChangeMap}>{t.changeMap}</SmallButton>
         </div>
       </div>
 
+      {/* OPÇÕES (escondidas para a tela ficar limpa): dica do mapa, first pick, solo/duo e filtros */}
+      {!training && options && (
+        <div className={`${PANEL} flex flex-col gap-3 p-4`}>
       {tip && !training && (
-        <p className="rounded-xl bg-[var(--accent-soft)] px-4 py-3 text-sm">
-          <strong>{t.mapTipTitle}:</strong> {tip}
-        </p>
+          <p className="rounded-xl bg-[var(--accent-soft)] px-4 py-3 text-sm">
+            <strong>{t.mapTipTitle}:</strong> {tip}
+          </p>
+        )}
+  
+  
+        {/* First pick e modo solo/duo */}
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="font-semibold text-[var(--soft)]">{t.firstPick}:</span>
+          {(["mine", "enemy"] as Side[]).map((s) => (
+            <button key={s} disabled={training} onClick={() => setFirst(s)} className={choice(first === s)}>
+              {s === "mine" ? t.myTeam : t.enemy}
+            </button>
+          ))}
+          {!training && (
+            <>
+              <span className="ml-2 font-semibold text-[var(--soft)]">·</span>
+              <button onClick={() => setDuo(false)} className={choice(!duo)}>
+                {t.modeSolo}
+              </button>
+              <button onClick={() => setDuo(true)} className={choice(duo)}>
+                {t.modeDuo}
+              </button>
+            </>
+          )}
+        </div>
+  
+        {duo && !training && (
+          <div className={`${PANEL} flex flex-wrap items-center gap-2 p-3`}>
+            <span className="text-sm text-[var(--soft)]">{t.duoHelp}</span>
+            <input value={friendTag} onChange={(e) => setFriendTag(e.target.value)} placeholder={t.friendTag} className={`${INPUT} w-44 uppercase`} />
+            <SmallButton onClick={loadFriend} disabled={!friendTag.trim()}>
+              {t.loadFriend}
+            </SmallButton>
+            {friendMsg && <span className="text-xs font-medium text-[var(--soft)]">{friendMsg}</span>}
+          </div>
+        )}
+          <div className="flex flex-wrap gap-2">
+            <SmallButton onClick={props.onToggleOnlyOwned}>{props.onlyOwned ? t.onlyMineOn : t.onlyMineOff}</SmallButton>
+            <SmallButton onClick={props.onEditOwned}>{t.myBrawlers}</SmallButton>
+          </div>
+        </div>
       )}
 
       {/* TRIO: código da sala e botão para copiar o link */}
@@ -388,38 +437,6 @@ export default function DraftScreen(props: {
           </span>
           <SmallButton onClick={copyLink}>{copied ? t.linkCopied : t.copyLink}</SmallButton>
           <span className="w-full text-xs text-[var(--soft)]">{t.roomHelp}</span>
-        </div>
-      )}
-
-      {/* First pick e modo solo/duo */}
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="font-semibold text-[var(--soft)]">{t.firstPick}:</span>
-        {(["mine", "enemy"] as Side[]).map((s) => (
-          <button key={s} disabled={training} onClick={() => setFirst(s)} className={choice(first === s)}>
-            {s === "mine" ? t.myTeam : t.enemy}
-          </button>
-        ))}
-        {!training && (
-          <>
-            <span className="ml-2 font-semibold text-[var(--soft)]">·</span>
-            <button onClick={() => setDuo(false)} className={choice(!duo)}>
-              {t.modeSolo}
-            </button>
-            <button onClick={() => setDuo(true)} className={choice(duo)}>
-              {t.modeDuo}
-            </button>
-          </>
-        )}
-      </div>
-
-      {duo && !training && (
-        <div className={`${PANEL} flex flex-wrap items-center gap-2 p-3`}>
-          <span className="text-sm text-[var(--soft)]">{t.duoHelp}</span>
-          <input value={friendTag} onChange={(e) => setFriendTag(e.target.value)} placeholder={t.friendTag} className={`${INPUT} w-44 uppercase`} />
-          <SmallButton onClick={loadFriend} disabled={!friendTag.trim()}>
-            {t.loadFriend}
-          </SmallButton>
-          {friendMsg && <span className="text-xs font-medium text-[var(--soft)]">{friendMsg}</span>}
         </div>
       )}
 
@@ -664,15 +681,11 @@ export default function DraftScreen(props: {
               <h2 className="text-xl font-bold">{stageTitle}</h2>
               <p className="text-xs text-[var(--soft)]">{stageTip}</p>
             </div>
-            <div className="flex gap-2">
-              <SmallButton onClick={props.onToggleOnlyOwned}>{props.onlyOwned ? t.onlyMineOn : t.onlyMineOff}</SmallButton>
-              <SmallButton onClick={props.onEditOwned}>{t.myBrawlers}</SmallButton>
-            </div>
           </div>
           {props.onlyOwned && props.owned.length === 0 && <p className="mt-1 text-xs text-[var(--soft)]">{t.onlyMineEmpty}</p>}
           <div className="mt-3 flex flex-col gap-2">
             {top.map((r, i) => (
-              <div key={r.brawler.id} className={CARD}>
+              <div key={r.brawler.id} className={`${CARD} ${i === 0 ? "border-2 border-[var(--accent)]" : ""}`}>
                 <button onClick={() => setOpen(open === r.brawler.id ? null : r.brawler.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left">
                   <span className="w-6 text-center text-xl font-extrabold text-[var(--faint)]">{i + 1}</span>
                   <Icon brawler={r.brawler} size={52} />
@@ -680,7 +693,7 @@ export default function DraftScreen(props: {
                     <span className="block text-lg font-bold leading-tight">
                       {r.brawler.name} <span className="text-xs font-normal text-[var(--faint)]">{className(lang, r.brawler.class)}</span>
                     </span>
-                    <span className="block text-xs text-[var(--soft)]">{r.reasons.join(" · ")}</span>
+                    <span className="block text-xs text-[var(--soft)]">{(open === r.brawler.id ? r.reasons : r.reasons.slice(0, 2)).join(" · ")}</span>
                     {r.trap && (
                       <span className="mt-1 inline-block rounded-md bg-[var(--warn-bg)] px-2 py-0.5 text-[11px] font-semibold text-[var(--warn)]">
                         ⚠ {t.trapWarn(r.trap)}
@@ -714,7 +727,7 @@ export default function DraftScreen(props: {
             ))}
             {top.length === 0 && <p className="text-sm text-[var(--soft)]">{t.noOptions}</p>}
           </div>
-          {ranking.length > 5 && (
+          {ranking.length > 3 && (
             <div className="mt-3 flex justify-center">
               <SmallButton onClick={() => setShowAll(!showAll)}>{showAll ? t.seeLess : t.seeMore}</SmallButton>
             </div>

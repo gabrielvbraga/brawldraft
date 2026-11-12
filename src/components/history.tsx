@@ -36,7 +36,7 @@ export function HistoryScreen(props: {
   alertMaps: number[];
 }) {
   const { t, lang, history } = props;
-  const [tab, setTab] = useState<"week" | "season" | "goals" | "matches">("week");
+  const [tab, setTab] = useState<"week" | "season" | "goals" | "matches" | "more">("week");
   const [open, setOpen] = useState<string | null>(null);
 
   // ---- Relatório da semana ----
@@ -110,6 +110,9 @@ export function HistoryScreen(props: {
         <button onClick={() => setTab("matches")} className={choice(tab === "matches")}>
           {t.recent} ({history.length})
         </button>
+        <button onClick={() => setTab("more")} className={choice(tab === "more")}>
+          {t.historyMore}
+        </button>
       </div>
 
       {tab === "week" && (
@@ -140,8 +143,6 @@ export function HistoryScreen(props: {
               <p className={`${SUB} mt-2`}>{t.metaMovesEmpty}</p>
             )}
           </section>
-          <RecCard t={t} history={history} summary={props.recSummary} />
-          <AlertsCard t={t} lang={lang} maps={props.alertMaps} />
           {history.length > 0 && (
             <section className={`${CARD} p-5`}>
               <h2 className={H2}>{t.byMode}</h2>
@@ -161,6 +162,13 @@ export function HistoryScreen(props: {
       )}
 
       {tab === "season" && <SeasonCharts t={t} history={history} />}
+
+      {tab === "more" && (
+        <div className="flex flex-col gap-4">
+          <AlertsCard t={t} lang={lang} maps={props.alertMaps} />
+          <RecCard t={t} history={history} summary={props.recSummary} />
+        </div>
+      )}
 
       {tab === "goals" && (
         <section className={`${CARD} p-5`}>
