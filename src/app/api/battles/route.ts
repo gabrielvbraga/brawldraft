@@ -10,7 +10,7 @@ type RawItem = {
   battle?: {
     type?: string;
     result?: string;
-    teams?: { tag?: string; brawler?: { id?: number; name?: string } }[][];
+    teams?: { tag?: string; brawler?: { id?: number; name?: string; power?: number } }[][];
   };
 };
 
@@ -44,7 +44,8 @@ export async function GET(request: Request) {
     if (mine < 0) continue;
     const ids = (team: { brawler?: { id?: number } }[]) =>
       team.map((p) => p.brawler?.id).filter((x): x is number => typeof x === "number");
-    const played = b.teams[mine].find((p) => p.tag === me)?.brawler?.id;
+    const meInBattle = b.teams[mine].find((p) => p.tag === me)?.brawler;
+    const played = meInBattle?.id;
     if (typeof played !== "number") continue;
     items.push({
       date: isoTime(it.battleTime ?? ""),
@@ -52,6 +53,8 @@ export async function GET(request: Request) {
       mapName: it.event?.map ?? "",
       win: b.result === "victory",
       played,
+      // Nível usado na partida. No Ranked, os 6 grátis da temporada aparecem como nível 11.
+      playedPower: meInBattle?.power ?? 0,
       team: ids(b.teams[mine]),
       enemies: ids(b.teams[1 - mine]),
     });

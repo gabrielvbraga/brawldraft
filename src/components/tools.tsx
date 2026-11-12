@@ -37,6 +37,7 @@ export function CountersScreen(props: { t: Dict }) {
             <CounterList title={t.beatIt} items={result.beatIt} t={t} good={false} />
             <CounterList title={t.losesToIt} items={result.losesToIt} t={t} good />
           </div>
+          {!result.beatIt.some((x) => x.specific) && <p className="mt-4 rounded-xl bg-[var(--warn-bg)] p-3 text-sm text-[var(--warn)]">{t.noData}</p>}
           <p className="mt-4 text-xs text-[var(--faint)]">{t.countersSource}</p>
         </section>
       )}

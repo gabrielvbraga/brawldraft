@@ -11,7 +11,11 @@ import type { LiveMeta } from "@/lib/livemeta";
 import type { MetaDay } from "@/lib/metaChanges";
 import { metaChanges } from "@/lib/metaChanges";
 import type { RosterItem } from "@/lib/storage";
+import type { RecSummary } from "@/lib/supabase";
 import type { Brawler, GameMap } from "@/lib/types";
+import { upgradeAdvice } from "@/lib/upgrade";
+import { RecCard } from "./extras";
+import { UpgradeCard } from "./extras";
 import {
   BrawlerGrid,
   CARD,
@@ -109,11 +113,13 @@ export function Home(props: {
   live: LiveMeta;
   metaHistory: MetaDay[];
   battles: number;
+  mapCount: number;
   ownedCount: number;
   historyCount: number;
   rotation: Set<number> | null;
   showTrio: boolean;
   loggedIn: boolean;
+  recSummary: RecSummary | null;
   onGo: (where: "draft" | "train" | "trio" | "meta" | "history" | "owned" | "account" | "counters" | "quiz" | "leaderboard" | "compare") => void;
   onPickMap: (m: GameMap) => void;
 }) {
@@ -162,15 +168,14 @@ export function Home(props: {
         </div>
         <div className="grid flex-[1_1_360px] grid-cols-2 gap-3">
           {[
-            { label: t.statBrawlers, value: String(BRAWLERS.length), sub: t.statBrawlersSub },
-            { label: t.statMaps, value: String(MAPS.length), sub: today && today.size ? t.statToday(today.size) : t.statMapsSub },
-            { label: t.statBattles, value: props.battles > 0 ? props.battles.toLocaleString(lang === "pt" ? "pt-BR" : "en-US") : "—", sub: t.statBattlesSub },
-            { label: t.statRefresh, value: "12 h", sub: "topbrawl.com" },
+            { label: t.statRefresh, value: "12h" },
+            { label: t.statBattles, value: props.battles > 0 ? props.battles.toLocaleString(lang === "pt" ? "pt-BR" : "en-US") : "—" },
+            { label: t.statBrawlers, value: String(BRAWLERS.length) },
+            { label: t.statMaps, value: String(props.mapCount) },
           ].map((s) => (
-            <div key={s.label} className={`${CARD} flex flex-col gap-1 p-5`}>
-              <span className="text-xs text-[var(--soft)]">{s.label}</span>
+            <div key={s.label} className={`${CARD} flex flex-col justify-center gap-1 p-5`}>
+              <span className="text-sm text-[var(--soft)]">{s.label}</span>
               <span className="text-3xl font-extrabold tracking-tight">{s.value}</span>
-              <span className="text-[11px] text-[var(--faint)]">{s.sub}</span>
             </div>
           ))}
         </div>
@@ -222,6 +227,9 @@ export function Home(props: {
           <p className={`${SUB} mt-2`}>{t.metaMovesEmpty}</p>
         )}
       </section>
+
+      {/* AS SUGESTÕES FUNCIONAM? (aparece com 20+ resultados de quem seguiu) */}
+      {props.recSummary && props.recSummary.followed.games >= 20 && <RecCard t={t} history={[]} summary={props.recSummary} globalOnly />}
 
       {/* MAPAS */}
       <section className="flex flex-col gap-4">
@@ -482,8 +490,11 @@ export function OwnedScreen(props: {
   onImported: (tag: string, name: string, roster: RosterItem[]) => void;
   onFree6: (ids: number[]) => void;
   onDone: () => void;
+  rotation: Set<number> | null;
+  comfort: Record<number, number>;
 }) {
   const { t, owned, roster, free6 } = props;
+  const tips = upgradeAdvice(BRAWLERS, roster, free6, MAPS, props.rotation, props.comfort);
   const [tag, setTag] = useState(props.tag);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -553,6 +564,9 @@ export function OwnedScreen(props: {
           />
         </section>
       )}
+
+      {/* Qual upar pro nível 11 */}
+      <UpgradeCard t={t} tips={tips} hasRoster={roster.length > 0} />
 
       {/* Lista completa */}
       <section>
@@ -649,6 +663,120 @@ export function AccountScreen(props: {
           {message && <p className={`text-sm ${message.ok ? "text-[var(--good)]" : "text-[var(--bad)]"}`}>{message.text}</p>}
         </div>
       )}
+    </div>
+  );
+}
+
+// ================= INÍCIO DO DRAFT (mapa + bans + first pick) =================
+
+export type DraftSetupChoice = { bans: boolean; first: "mine" | "enemy" };
+
+export function DraftSetup(props: {
+  t: Dict;
+  lang: Lang;
+  map: GameMap;
+  title: string;
+  ownedCount: number;
+  onlyOwned: boolean;
+  tag: string;
+  onChangeMap: () => void;
+  onEditOwned: () => void;
+  onStart: (c: DraftSetupChoice) => void;
+}) {
+  const { t, lang, map } = props;
+  const [bans, setBans] = useState<boolean | null>(null);
+  const [first, setFirst] = useState<"mine" | "enemy">("mine");
+  const option = (on: boolean) =>
+    `w-full rounded-2xl border-2 p-4 text-left transition ${
+      on ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] hover:border-[var(--faint)]"
+    }`;
+  const ownedText =
+    props.onlyOwned && props.ownedCount > 0
+      ? props.tag
+        ? t.ownedLine(props.ownedCount, props.tag)
+        : t.ownedLineNoTag(props.ownedCount)
+      : props.tag
+        ? t.ownedAll
+        : t.ownedNone;
+
+  return (
+    <div className="mx-auto max-w-xl">
+      <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent)]">{props.title}</p>
+      <section className={`${CARD} mt-2 flex flex-col gap-5 p-5 sm:p-6`}>
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-tight">{t.setupTitle}</h1>
+          <p className={`${SUB} mt-1`}>{t.setupSub}</p>
+        </div>
+
+        <div className="flex items-center gap-3 rounded-2xl border border-[var(--line)] p-3">
+          <div className="w-20 shrink-0">
+            <MapImage map={map} height={80} zoomLabel={t.zoomMap} closeLabel={t.close} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t.mapLabel}</p>
+            <p className="truncate text-lg font-bold">{map.name}</p>
+            <p className="flex items-center gap-1.5 text-xs text-[var(--soft)]">
+              <span className="h-2 w-2 rounded-full" style={{ background: MODE_COLOR[map.mode] }} />
+              {modeName(lang, map.mode)}
+            </p>
+          </div>
+          <button onClick={props.onChangeMap} className="px-2 text-sm font-bold text-[var(--accent)] hover:underline">
+            {t.swap}
+          </button>
+        </div>
+
+        <hr className="border-[var(--line)]" />
+
+        <div className="flex flex-col gap-3">
+          <div>
+            <h2 className={H2}>{t.bansQ}</h2>
+            <p className={`${SUB} mt-1`}>{t.bansQSub}</p>
+          </div>
+          <button onClick={() => setBans(true)} className={option(bans === true)} aria-pressed={bans === true}>
+            <span className="block font-bold">{t.bansYes}</span>
+            <span className="block text-sm text-[var(--soft)]">{t.bansYesSub}</span>
+          </button>
+          <button onClick={() => setBans(false)} className={option(bans === false)} aria-pressed={bans === false}>
+            <span className="block font-bold">{t.bansNo}</span>
+            <span className="block text-sm text-[var(--soft)]">{t.bansNoSub}</span>
+          </button>
+        </div>
+
+        <hr className="border-[var(--line)]" />
+
+        <div>
+          <h2 className="font-bold">{t.firstQ}</h2>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button onClick={() => setFirst("mine")} className={choice(first === "mine")}>
+              {t.myTeam}
+            </button>
+            <button onClick={() => setFirst("enemy")} className={choice(first === "enemy")}>
+              {t.enemy}
+            </button>
+          </div>
+          <p className="mt-1.5 text-xs text-[var(--faint)]">{t.firstQSub}</p>
+        </div>
+
+        <hr className="border-[var(--line)]" />
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-[var(--soft)]">{ownedText}</p>
+          <button onClick={props.onEditOwned} className="text-sm font-bold text-[var(--accent)] hover:underline">
+            {t.myBrawlers}
+          </button>
+        </div>
+
+        <div>
+          <button
+            onClick={() => bans !== null && props.onStart({ bans, first })}
+            disabled={bans === null}
+            className="w-full rounded-xl bg-[var(--accent)] px-6 py-3.5 text-base font-bold text-white transition hover:brightness-110 active:scale-[0.99] disabled:bg-[var(--sunken)] disabled:text-[var(--faint)]"
+          >
+            {t.startDraft}
+          </button>
+          {bans === null && <p className="mt-2 text-center text-xs text-[var(--faint)]">{t.startHint}</p>}
+        </div>
+      </section>
     </div>
   );
 }

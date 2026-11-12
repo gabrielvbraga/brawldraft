@@ -2,6 +2,7 @@
 // Recebe o que foi lido do topbrawl.com e atualiza, no lugar, as listas de
 // Brawlers e de mapas que o resto do site usa.
 
+import type { Collected } from "@/lib/collector";
 import type { LiveMeta } from "@/lib/livemeta";
 import type { Tier } from "@/lib/types";
 import { BRAWLERS } from "./brawlers";
@@ -14,15 +15,17 @@ const SAVED_TOP = new Map(MAPS.map((m) => [m.id, m.top]));
 let appliedAt: string | null = null;
 
 /**
- * Tier pela posição no ranking ao vivo, que já vem ordenado por % DE VITÓRIAS
- * (o 1º é sempre quem mais vence). Quem não aparece no ranking lido mantém o
- * tier salvo, mas sem passar de A (S+ e S ficam só para quem está no topo agora).
+ * Tier pela % DE VITÓRIAS no Ranked (o 1º é sempre quem mais vence).
+ * Quem não aparece na lista lida mantém o tier salvo, mas sem passar de A.
  */
-function tierFromRank(rank: number, saved: Tier): Tier {
-  if (rank < 0) return saved === "S+" || saved === "S" ? "A" : saved;
-  if (rank < 3) return "S+";
-  if (rank < 7) return "S";
-  return "A";
+function tierFromRate(wins: number | undefined, saved: Tier): Tier {
+  if (wins === undefined) return saved === "S+" || saved === "S" ? "A" : saved;
+  if (wins >= 55) return "S+";
+  if (wins >= 53) return "S";
+  if (wins >= 51.5) return "A";
+  if (wins >= 49.5) return "B";
+  if (wins >= 47) return "C";
+  return "D";
 }
 
 export function applyLive(live: LiveMeta | null) {
@@ -30,11 +33,10 @@ export function applyLive(live: LiveMeta | null) {
   appliedAt = live.updatedAt;
 
   // live.overall já vem do maior para o menor % de vitórias.
-  const order = live.overall.map((r) => r.name);
+  const rate = new Map(live.overall.map((r) => [r.name, r.wins]));
   for (const b of BRAWLERS) {
-    const rank = order.indexOf(b.name);
-    b.tier = tierFromRank(rank, SAVED_TIER.get(b.id) ?? b.tier);
-    b.winRate = rank >= 0 ? live.overall[rank].wins : undefined;
+    b.winRate = rate.get(b.name);
+    b.tier = tierFromRate(b.winRate, SAVED_TIER.get(b.id) ?? b.tier);
   }
 
   for (const m of MAPS) {
@@ -47,4 +49,37 @@ export function applyLive(live: LiveMeta | null) {
       m.topRates = undefined;
     }
   }
+}
+
+const MODES = ["Gem Grab", "Brawl Ball", "Heist", "Hot Zone", "Bounty", "Knockout"];
+
+/**
+ * MAPAS NOVOS: se o coletor viu partidas de Ranked num mapa que o site ainda não
+ * conhece (nos últimos 7 dias), o mapa entra na lista sozinho, com foto e modo.
+ */
+export function applyNewMaps(collected: Collected | null) {
+  if (!collected?.mapInfo) return;
+  const limit = Date.now() - 7 * 86400000;
+  for (const [id, info] of Object.entries(collected.mapInfo)) {
+    const gameId = Number(id);
+    const seen = collected.recentMaps?.[id];
+    if (!seen || new Date(seen).getTime() < limit) continue;
+    if (!MODES.includes(info.mode) || MAPS.some((m) => m.gameId === gameId)) continue;
+    MAPS.push({
+      id: 1000 + MAPS.length,
+      name: info.name,
+      mode: info.mode,
+      top: [],
+      gameId,
+      imageUrl: `https://cdn.brawlify.com/maps/regular/${gameId}.png`,
+    });
+  }
+}
+
+/** Quantos mapas apareceram no Ranked nos últimos 7 dias (null = sem dados suficientes). */
+export function rankedMapCount(collected: Collected | null): number | null {
+  if (!collected?.recentMaps) return null;
+  const limit = Date.now() - 7 * 86400000;
+  const n = Object.values(collected.recentMaps).filter((w) => new Date(w).getTime() >= limit).length;
+  return n >= 10 ? n : null;
 }

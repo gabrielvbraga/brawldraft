@@ -9,6 +9,9 @@ import { lossReasons } from "@/lib/engine";
 import { modeName, type Dict, type Lang } from "@/lib/i18n";
 import { metaChanges, type MetaDay } from "@/lib/metaChanges";
 import { groupBy, lastDays, type HistoryEntry } from "@/lib/storage";
+import { weekCard } from "@/lib/share";
+import type { RecSummary } from "@/lib/supabase";
+import { AlertsCard, RecCard, SeasonCharts, ShareButton } from "./extras";
 import { CARD, H1, H2, Icon, Pill, PrimaryButton, SUB, SmallButton, choice } from "./ui";
 
 const BY_NAME = new Map(BRAWLERS.map((b) => [b.name, b]));
@@ -29,9 +32,11 @@ export function HistoryScreen(props: {
   syncMessage: string | null;
   onSync: () => void;
   onClear: () => void;
+  recSummary: RecSummary | null;
+  alertMaps: number[];
 }) {
   const { t, lang, history } = props;
-  const [tab, setTab] = useState<"week" | "goals" | "matches">("week");
+  const [tab, setTab] = useState<"week" | "season" | "goals" | "matches">("week");
   const [open, setOpen] = useState<string | null>(null);
 
   // ---- Relatório da semana ----
@@ -42,6 +47,29 @@ export function HistoryScreen(props: {
   const byMap = groupBy(week, (h) => h.map).filter(([, s]) => s.games >= 2);
   const worst = [...byMap].sort((a, b) => a[1].wins / a[1].games - b[1].wins / b[1].games)[0];
   const changes = metaChanges(props.metaHistory);
+
+  /** Desenha o card da semana para compartilhar. */
+  function makeWeekCard() {
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(Date.now() - (6 - i) * 86400000).toISOString().slice(0, 10);
+      const list = week.filter((h) => h.date.slice(0, 10) === d);
+      return { games: list.length, wins: list.filter((h) => h.win).length };
+    });
+    const bestB = best ? BY_NAME.get(best[0]) : undefined;
+    return weekCard({
+      title: t.cardWeek,
+      games: week.length,
+      winRate: pct(weekWins, week.length),
+      gamesLabel: t.games,
+      winRateLabel: t.winRate,
+      best: best && bestB ? { id: bestB.id, name: best[0], line: `${pct(best[1].wins, best[1].games)}% · ${best[1].games}` } : undefined,
+      bestLabel: t.reportBestLabel,
+      worstMap: worst ? { name: worst[0], line: `${pct(worst[1].wins, worst[1].games)}% · ${worst[1].games}` } : undefined,
+      worstLabel: t.reportWorstLabel,
+      days,
+      host: window.location.host,
+    });
+  }
 
   // ---- Metas de treino (Brawler + modo, a partir de 5 partidas) ----
   const goals = groupBy(history, (h) => `${h.played}|${h.mode}`)
@@ -73,6 +101,9 @@ export function HistoryScreen(props: {
         <button onClick={() => setTab("week")} className={choice(tab === "week")}>
           {t.reportTitle}
         </button>
+        <button onClick={() => setTab("season")} className={choice(tab === "season")}>
+          {t.seasonTab}
+        </button>
         <button onClick={() => setTab("goals")} className={choice(tab === "goals")}>
           {t.goalsTitle}
         </button>
@@ -83,6 +114,11 @@ export function HistoryScreen(props: {
 
       {tab === "week" && (
         <div className="flex flex-col gap-4">
+          {week.length > 0 && (
+            <div>
+              <ShareButton t={t} fileName="brawldraft-semana.png" make={makeWeekCard} />
+            </div>
+          )}
           {week.length === 0 ? (
             <p className={`${CARD} p-5 text-sm text-[var(--soft)]`}>{t.reportEmpty}</p>
           ) : (
@@ -104,6 +140,8 @@ export function HistoryScreen(props: {
               <p className={`${SUB} mt-2`}>{t.metaMovesEmpty}</p>
             )}
           </section>
+          <RecCard t={t} history={history} summary={props.recSummary} />
+          <AlertsCard t={t} lang={lang} maps={props.alertMaps} />
           {history.length > 0 && (
             <section className={`${CARD} p-5`}>
               <h2 className={H2}>{t.byMode}</h2>
@@ -121,6 +159,8 @@ export function HistoryScreen(props: {
           )}
         </div>
       )}
+
+      {tab === "season" && <SeasonCharts t={t} history={history} />}
 
       {tab === "goals" && (
         <section className={`${CARD} p-5`}>
@@ -174,7 +214,8 @@ export function HistoryScreen(props: {
                   {b && <Icon brawler={b} size={34} />}
                   <span className="min-w-0 flex-1">
                     <span className="block font-semibold">
-                      {h.played} {h.source === "auto" && <Pill>{t.autoBadge}</Pill>}
+                      {h.played} {h.source === "auto" && <Pill>{t.autoBadge}</Pill>}{" "}
+                      {h.followed && <Pill bg="var(--good-bg)" color="var(--good)">{t.recFollowed}</Pill>}
                     </span>
                     <span className="block truncate text-xs text-[var(--soft)]">
                       {h.map} · {modeName(lang, h.mode)}

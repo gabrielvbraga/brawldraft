@@ -105,3 +105,83 @@ drop policy if exists "ler placar" on train_scores;
 drop policy if exists "gravar minha nota" on train_scores;
 create policy "ler placar" on train_scores for select to anon, authenticated using (true);
 create policy "gravar minha nota" on train_scores for insert to authenticated with check (auth.uid() = user_id);
+
+-- 9) PROTEÇÕES EXTRAS (contra abuso e spam)
+-- Placar: no máximo uma nota por conta a cada 60 segundos.
+create or replace function public.limitar_notas() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if exists (
+    select 1 from train_scores
+    where user_id = new.user_id and created_at > now() - interval '60 seconds'
+  ) then
+    raise exception 'calma: uma nota por minuto';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists limitar_notas on train_scores;
+create trigger limitar_notas before insert on train_scores for each row execute function public.limitar_notas();
+
+-- Tamanhos máximos: apelido, nome de tela e o estado de uma sala.
+do $$ begin
+  alter table train_scores add constraint nick_curto check (char_length(nick) between 2 and 20) not valid;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter table visits add constraint tela_curta check (char_length(screen) <= 30) not valid;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter table rooms add constraint sala_pequena check (pg_column_size(state) < 4000 and char_length(code) <= 8) not valid;
+exception when duplicate_object then null; end $$;
+
+-- 10) AS SUGESTÕES FUNCIONAM? (v11)
+-- Cada resultado salvo no fim de um draft (só de quem tem conta) guarda se a pessoa
+-- seguiu uma das 3 primeiras sugestões e se venceu. Ninguém lê as linhas: o site só
+-- vê o resumo (função rec_summary).
+create table if not exists rec_results (
+  id bigint generated always as identity primary key,
+  user_id uuid not null default auth.uid() references auth.users on delete cascade,
+  followed boolean not null,
+  win boolean not null,
+  map text not null check (char_length(map) <= 40),
+  brawler text not null check (char_length(brawler) <= 30),
+  created_at timestamptz not null default now()
+);
+alter table rec_results enable row level security;
+drop policy if exists "gravar meu resultado" on rec_results;
+create policy "gravar meu resultado" on rec_results for insert to authenticated with check (auth.uid() = user_id);
+
+create or replace function public.limitar_resultados() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if exists (
+    select 1 from rec_results
+    where user_id = new.user_id and created_at > now() - interval '30 seconds'
+  ) then
+    raise exception 'calma: um resultado a cada 30 segundos';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists limitar_resultados on rec_results;
+create trigger limitar_resultados before insert on rec_results for each row execute function public.limitar_resultados();
+
+create or replace function public.rec_summary()
+returns table (followed boolean, games bigint, wins bigint)
+language sql stable security definer set search_path = public as $$
+  select followed, count(*), count(*) filter (where win) from rec_results group by followed;
+$$;
+grant execute on function public.rec_summary() to anon, authenticated;
+
+-- 11) AVISOS NO CELULAR (v11)
+-- Cada aparelho que ligou os avisos. Só o servidor (chave secreta) lê e grava aqui.
+create table if not exists push_subs (
+  endpoint text primary key check (char_length(endpoint) < 700),
+  maps integer[] not null default '{}',
+  lang text not null default 'pt',
+  message jsonb,
+  notified jsonb not null default '{}'::jsonb,
+  meta_day text,
+  created_at timestamptz not null default now()
+);
+alter table push_subs enable row level security;

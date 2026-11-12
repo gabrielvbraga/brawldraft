@@ -5,6 +5,7 @@
 //   - vitórias jogando junto com outro Brawler .... "with" (chave "A+B", menor id primeiro)
 //   - vitórias por faixa de Ranked (Bronze...) .... "byRank"
 //   - quando cada mapa apareceu pela última vez ... "recentMaps" (para a rotação de hoje)
+//   - nome e modo de cada mapa visto no Ranked ..... "mapInfo" (para achar mapas novos)
 // Os números são guardados como [vitórias, partidas].
 
 export type Pair = [number, number];
@@ -19,6 +20,8 @@ export type Collected = {
   byRank: Record<string, Record<string, Pair>>;
   /** Mapa -> data da última partida de Ranked vista nele. */
   recentMaps: Record<string, string>;
+  /** Mapa -> nome e modo, como a API informa. */
+  mapInfo: Record<string, { name: string; mode: string }>;
 };
 
 /** O que fica guardado no banco: as contas + controles do coletor. */
@@ -35,6 +38,7 @@ export const emptyStats = (): StoredStats => ({
   with: {},
   byRank: {},
   recentMaps: {},
+  mapInfo: {},
   seen: [],
   queue: [],
 });
@@ -42,7 +46,7 @@ export const emptyStats = (): StoredStats => ({
 // Formato (parcial) de uma partida no histórico da API oficial.
 export type RawBattle = {
   battleTime?: string;
-  event?: { id?: number };
+  event?: { id?: number; mode?: string; map?: string };
   battle?: {
     type?: string;
     result?: string;
@@ -90,7 +94,8 @@ export function addBattles(stats: StoredStats, seen: Set<string>, ownerTag: stri
     if (!mapId) continue;
 
     const tags = b.teams.flat().map((p) => p.tag ?? "");
-    const key = `${item.battleTime}|${[...tags].sort().join(",")}`;
+    // Identificador curto da partida (data + jogadores), para não contar duas vezes.
+    const key = shortHash(`${item.battleTime}|${[...tags].sort().join(",")}`);
     if (seen.has(key)) continue; // a mesma partida aparece no histórico dos 6 jogadores
     seen.add(key);
 
@@ -110,6 +115,8 @@ export function addBattles(stats: StoredStats, seen: Set<string>, ownerTag: stri
     // Rotação: guarda a data mais recente em que este mapa apareceu.
     const when = isoTime(item.battleTime ?? "");
     if (when && (!stats.recentMaps[String(mapId)] || stats.recentMaps[String(mapId)] < when)) stats.recentMaps[String(mapId)] = when;
+    const modeName = MODE_NAMES[item.event?.mode ?? ""];
+    if (modeName && item.event?.map) (stats.mapInfo ??= {})[String(mapId)] = { name: item.event.map, mode: modeName };
     const mapTable = (stats.maps[String(mapId)] ??= {});
     ids.forEach((team, t) => {
       const won = t === winner;
@@ -130,6 +137,26 @@ export function addBattles(stats: StoredStats, seen: Set<string>, ownerTag: stri
     for (const tag of tags) if (tag && tag !== ownerTag) others.push(tag);
   }
   return { added, others };
+}
+
+/** Nome dos modos como a API manda ("gemGrab") -> como o site usa ("Gem Grab"). */
+const MODE_NAMES: Record<string, string> = {
+  gemGrab: "Gem Grab",
+  brawlBall: "Brawl Ball",
+  heist: "Heist",
+  hotZone: "Hot Zone",
+  bounty: "Bounty",
+  knockout: "Knockout",
+};
+
+/** Resumo curto (8 letras) de um texto: guarda menos espaço que o texto inteiro. */
+function shortHash(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
 }
 
 /** Faixas de Ranked, do rank 1 ao 22 (3 ranks por faixa; Mestre e acima juntos). */
@@ -160,5 +187,6 @@ export function slim(stats: StoredStats): Collected {
     with: keep(stats.with, 10),
     byRank,
     recentMaps: stats.recentMaps ?? {},
+    mapInfo: stats.mapInfo ?? {},
   };
 }

@@ -12,6 +12,8 @@ export type HistoryEntry = {
   win: boolean;
   /** "auto" = veio sozinha pela tag; "manual" = marcada no fim de um draft. */
   source?: "auto" | "manual";
+  /** Marcada no fim do draft: o Brawler jogado era uma das 3 primeiras sugestões do site? */
+  followed?: boolean;
 };
 
 /** Um Brawler do jogador, como vem da importação pela tag. */

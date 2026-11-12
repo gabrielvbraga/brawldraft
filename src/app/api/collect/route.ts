@@ -1,5 +1,6 @@
 // ROTA /api/collect — O COLETOR DE PARTIDAS
-// Roda sozinho uma vez por dia (agendado no vercel.json). Faz assim:
+// Roda sozinho toda hora (agendado no GitHub, em .github/workflows/coletor.yml) e
+// uma vez por dia pela própria Vercel (vercel.json), como reserva. Faz assim:
 //   1. pega os 200 melhores jogadores do mundo (ranking da API oficial);
 //   2. lê o histórico de partidas de cada um (mais jogadores achados nas partidas da vez anterior);
 //   3. soma as partidas de Ranked (src/lib/collector.ts) e guarda tudo no Supabase.
@@ -19,9 +20,9 @@ import { keyHeaders } from "@/lib/supabase";
 export const maxDuration = 60; // segundos que a Vercel deixa esta rota rodar
 
 const API = "https://bsproxy.royaleapi.dev/v1";
-const MAX_PLAYERS = 300; // jogadores visitados por rodada
-const PARALLEL = 10; // pedidos ao mesmo tempo
-const TIME_LIMIT = 45_000; // para antes de estourar o tempo da Vercel
+const MAX_PLAYERS = 600; // jogadores visitados por rodada
+const PARALLEL = 20; // pedidos ao mesmo tempo
+const TIME_LIMIT = 48_000; // para antes de estourar o tempo da Vercel
 
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
@@ -55,8 +56,10 @@ export async function GET(request: Request) {
     // primeira vez ou banco fora do ar: começa do zero
   }
 
-  // 2) Partidas antigas passam a valer 10% menos a cada rodada (o meta muda com o tempo).
-  decay(stats, 0.9);
+  // 2) Partidas antigas perdem 10% do peso por dia (o meta muda com o tempo). O desconto
+  //    é proporcional às horas desde a última coleta, então rodar mais vezes não pesa mais.
+  const hours = Math.max(0, (Date.now() - new Date(stats.updatedAt).getTime()) / 3_600_000);
+  if (hours > 0 && hours < 24 * 60) decay(stats, Math.pow(0.9, hours / 24));
 
   // 3) Lista de jogadores: top 200 do mundo + os achados na rodada anterior.
   const ranking = await api<{ items?: { tag?: string }[] }>("/rankings/global/players?limit=200");
@@ -85,8 +88,8 @@ export async function GET(request: Request) {
 
   // 5) Guarda: as contas, as partidas já vistas (últimas 30 mil) e a fila da próxima rodada.
   stats.updatedAt = new Date().toISOString();
-  stats.seen = [...seen].slice(-30000);
-  stats.queue = [...new Set(found)].filter((t) => !top.includes(t)).slice(0, 200);
+  stats.seen = [...seen].slice(-60000);
+  stats.queue = [...new Set(found)].filter((t) => !top.includes(t)).slice(0, 400);
 
   const save = await fetch(`${sbUrl}/rest/v1/stats`, {
     method: "POST",

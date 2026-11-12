@@ -189,3 +189,28 @@ export async function loadScores(): Promise<Score[] | null> {
   for (const r of rows) if (!best.has(r.user_id)) best.set(r.user_id, r);
   return [...best.values()].slice(0, 50);
 }
+
+// ============== AS SUGESTÕES FUNCIONAM? ==============
+
+/** Guarda (só para quem tem conta) se a pessoa seguiu a sugestão e se venceu. */
+export async function saveRecResult(s: Session, r: { followed: boolean; win: boolean; map: string; brawler: string }): Promise<boolean> {
+  const ok = await rest<unknown>("rec_results", {
+    method: "POST",
+    token: s.access_token,
+    body: JSON.stringify({ user_id: s.user.id, ...r, map: r.map.slice(0, 40), brawler: r.brawler.slice(0, 30) }),
+  });
+  return ok !== null;
+}
+
+export type RecSummary = { followed: { games: number; wins: number }; other: { games: number; wins: number } };
+
+/** Resumo de todo mundo: quem seguiu a sugestão x quem escolheu outro. */
+export async function loadRecSummary(): Promise<RecSummary | null> {
+  const rows = await rest<{ followed: boolean; games: number; wins: number }[]>("rpc/rec_summary", { method: "POST", body: "{}" });
+  if (!rows || !Array.isArray(rows)) return null;
+  const pick = (f: boolean) => {
+    const r = rows.find((x) => x.followed === f);
+    return { games: Number(r?.games ?? 0), wins: Number(r?.wins ?? 0) };
+  };
+  return { followed: pick(true), other: pick(false) };
+}

@@ -14,6 +14,7 @@ import { cacheLife } from "next/cache";
 export const REFRESH = 60 * 60 * 12; // 12 horas
 
 const BASE = "https://topbrawl.com/rankeds";
+const FULL_LIST = "https://seemeta.com/en/brawl-stars/tier-list";
 
 /** Uma linha da tabela: nome do Brawler, % de vitórias e % de uso. */
 export type MetaRow = { name: string; wins: number; use: number };
@@ -27,6 +28,8 @@ export type LiveMeta = {
   updatedAt: string;
   /** true = cópia salva no site (a leitura ao vivo falhou). */
   saved?: boolean;
+  /** true = "overall" tem TODOS os Brawlers (seemeta); false = só o top 10 (topbrawl). */
+  full?: boolean;
 };
 
 /** Deixa o texto só com letras e números minúsculos, para comparar nomes. */
@@ -139,14 +142,28 @@ async function fetchPage(url: string): Promise<string | null> {
  * Busca o meta geral e o de cada mapa. Devolve null se a página geral falhar
  * (aí o site usa os dados salvos). Um mapa que falhar fica só sem dados novos.
  */
+/**
+ * Ranking COMPLETO do Ranked (todos os Brawlers, com % de vitórias), lido do seemeta.com.
+ * O topbrawl só mostra os 10 primeiros; para ordenar todos por % de vitórias, precisamos
+ * da lista inteira. Devolve [] se não conseguir ler (aí o site usa o top 10 do topbrawl).
+ */
+export async function fullRanking(knownNames: string[]): Promise<MetaRow[]> {
+  const html = await fetchPage(FULL_LIST);
+  if (!html) return [];
+  const rows = parseTable(html, knownNames).filter((r) => r.wins >= 30 && r.wins <= 75);
+  // Só confia se achou a maior parte dos Brawlers.
+  return rows.length >= knownNames.length * 0.6 ? rows : [];
+}
+
 export async function getLiveMeta(mapIds: number[], knownNames: string[]): Promise<LiveMeta | null> {
   "use cache";
 
-  const overallHtml = await fetchPage(BASE);
-  const overall = overallHtml ? parseTable(overallHtml, knownNames) : [];
+  const [overallHtml, full] = await Promise.all([fetchPage(BASE), fullRanking(knownNames)]);
+  const top10 = overallHtml ? parseTable(overallHtml, knownNames) : [];
+  const overall = full.length > 0 ? full : top10;
   if (overall.length < 5) {
-    // Falhou: guarda o "falhou" por só 10 minutos, para tentar de novo logo.
-    cacheLife({ stale: 60, revalidate: 600, expire: 3600 });
+    // Falhou: guarda o "falhou" por só 2 minutos, para tentar de novo logo.
+    cacheLife({ stale: 30, revalidate: 120, expire: 3600 });
     return null;
   }
   // Deu certo: guarda por 12 horas. Depois disso, a próxima visita busca de novo.
@@ -159,5 +176,5 @@ export async function getLiveMeta(mapIds: number[], knownNames: string[]): Promi
     if (rows.length >= 3) maps[mapIds[i]] = rows;
   });
 
-  return { overall, maps, updatedAt: new Date().toISOString() };
+  return { overall, maps, full: full.length > 0, updatedAt: new Date().toISOString() };
 }

@@ -12,6 +12,8 @@ import { className, modeName, type Dict, type Lang } from "@/lib/i18n";
 import { readRoom, writeRoom, type RoomState } from "@/lib/room";
 import type { HistoryEntry, Personal } from "@/lib/storage";
 import type { Brawler, GameMap } from "@/lib/types";
+import { draftCard } from "@/lib/share";
+import { ShareButton } from "./extras";
 import { BrawlerGrid, CARD, INPUT, Icon, MODE_COLOR, MapImage, PANEL, Part, Pill, PrimaryButton, SmallButton, Strip, choice } from "./ui";
 
 type Target = "ban" | "mine" | "enemy";
@@ -130,12 +132,16 @@ export default function DraftScreen(props: {
   const [friendOwned, setFriendOwned] = useState<Set<number> | null>(null);
   const [friendMsg, setFriendMsg] = useState<string | null>(null);
   const [scoreSent, setScoreSent] = useState(false);
+  // Para "as sugestões funcionam?": cada pick seu era uma das 3 primeiras sugestões?
+  const [followed, setFollowed] = useState<Record<number, boolean>>({});
 
   // De quem é a vez, pela ordem do Ranked.
   const turn = nextTurn(first, mine.length, enemies.length);
   const auto: Target | null = !bansDone && bans.length < MAX_BANS ? "ban" : turn;
   const target = training ? auto : (manual ?? auto);
   const finished = auto === null;
+  // Draft "sem bans" (escolhido no início): esconde a faixa de banidos.
+  const noBans = !training && bansDone && bans.length === 0 && manual !== "ban";
 
   const filterOn = !training && props.onlyOwned && props.owned.length > 0;
   const used = new Set([...bans, ...mine, ...enemies]);
@@ -193,6 +199,7 @@ export default function DraftScreen(props: {
           setLog([...log, { picked: chosen.brawler.name, best: best.brawler.name, ratio, timeout }]);
         }
       }
+      if (!training) setFollowed({ ...followed, [id]: ranking.slice(0, 3).some((r) => r.brawler.id === id) });
       setMine([...mine, id]);
       push({ mine: [...mine, id] });
     }
@@ -330,6 +337,7 @@ export default function DraftScreen(props: {
       enemies: names(enemies),
       win,
       source: "manual",
+      ...(played !== null && played in followed ? { followed: followed[played] } : {}),
     });
     setSavedResult(true);
   }
@@ -410,9 +418,11 @@ export default function DraftScreen(props: {
       )}
 
       {/* As três faixas: banidos, meu time e inimigos */}
-      <div className="grid gap-2 md:grid-cols-3">
-        <Strip title={t.banned} color="#8a91a1" ids={bans} size={MAX_BANS} active={target === "ban"} byId={byId}
-          onSelect={training ? undefined : () => setManual("ban")} onRemove={training ? undefined : remove} />
+      <div className={`grid gap-2 ${noBans ? "md:grid-cols-2" : "md:grid-cols-3"}`}>
+        {!noBans && (
+          <Strip title={t.banned} color="#8a91a1" ids={bans} size={MAX_BANS} active={target === "ban"} byId={byId}
+            onSelect={training ? undefined : () => setManual("ban")} onRemove={training ? undefined : remove} />
+        )}
         <Strip title={t.myTeam} color="#2f80ed" ids={mine} size={TEAM_SIZE} active={target === "mine"} byId={byId}
           onSelect={training ? undefined : () => setManual("mine")} onRemove={training ? undefined : remove} />
         <Strip title={t.enemies} color="#e5533c" ids={enemies} size={TEAM_SIZE} active={target === "enemy"} byId={byId}
@@ -463,7 +473,33 @@ export default function DraftScreen(props: {
       {/* NOTA FINAL DO DRAFT (ao vivo e treino) */}
       {finished && finalGrade && (
         <section className={`${CARD} p-5`}>
-          <h2 className="text-xl font-bold">{t.gTitle}</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-xl font-bold">{t.gTitle}</h2>
+            <ShareButton
+              t={t}
+              fileName={`brawldraft-${map.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.png`}
+              make={() => {
+                const pick = (ids: number[]) => ids.map((id) => ({ id, name: byId.get(id)?.name ?? "?" }));
+                return draftCard({
+                  title: t.cardDraft,
+                  mapName: map.name,
+                  modeLabel: modeName(lang, map.mode),
+                  modeColor: MODE_COLOR[map.mode] ?? "#2f6bff",
+                  mapGameId: map.gameId,
+                  mine: pick(mine),
+                  enemies: pick(enemies),
+                  bans: pick(bans),
+                  myTeamLabel: t.myTeam,
+                  enemyLabel: t.enemies,
+                  bansLabel: t.banned,
+                  grade: finalGrade.letter,
+                  chance: finalGrade.chance,
+                  chanceLabel: t.cardChance,
+                  host: window.location.host,
+                });
+              }}
+            />
+          </div>
           <div className="mt-3 flex flex-wrap items-center gap-4">
             <span className="rounded-xl bg-[var(--accent)] px-4 py-2 text-4xl font-extrabold text-white">{finalGrade.letter}</span>
             <div className="min-w-[200px] flex-1">

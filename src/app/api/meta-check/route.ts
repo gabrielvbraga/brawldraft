@@ -3,9 +3,14 @@
 // Serve só para conferir quando a frase "Meta salvo no site" aparecer na tela inicial.
 
 import { BRAWLERS } from "@/data/brawlers";
-import { parseTable } from "@/lib/livemeta";
+import { fullRanking, parseTable } from "@/lib/livemeta";
 
 export async function GET(request: Request) {
+  // ?lista=1 testa a lista completa de todos os Brawlers (seemeta).
+  if (new URL(request.url).searchParams.get("lista") === "1") {
+    const rows = await fullRanking(BRAWLERS.map((b) => b.name));
+    return Response.json({ rowsParsed: rows.length, first: rows.slice(0, 8), gale: rows.find((r) => r.name === "Gale"), lou: rows.find((r) => r.name === "Lou") });
+  }
   // Página a testar: a geral, ou ?mapa=15000007 para um mapa.
   const map = new URL(request.url).searchParams.get("mapa");
   const url = `https://topbrawl.com/rankeds${map ? `/${map.replace(/\D/g, "")}` : ""}`;

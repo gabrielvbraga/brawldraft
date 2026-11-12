@@ -15,13 +15,8 @@ export const MODES = {
 };
 export type ModeName = keyof typeof MODES;
 
-export const ACCENTS = {
-  azul: { accent: "#2457d6", soft: "#eef2fc", softDark: "#1b2847" },
-  roxo: { accent: "#7a3cf0", soft: "#f3edfe", softDark: "#2a1d47" },
-  vermelho: { accent: "#d93a2b", soft: "#fdeeec", softDark: "#40201d" },
-  verde: { accent: "#0f8a6c", soft: "#e7f6f1", softDark: "#123a30" },
-};
-export type AccentName = keyof typeof ACCENTS;
+// Cor de destaque: azul, fixa no site inteiro.
+const ACCENT = { accent: "#2457d6", soft: "#eef2fc", softDark: "#1b2847" };
 
 // Cor de cada modo de jogo.
 export const MODE_COLOR: Record<string, string> = {
@@ -88,13 +83,11 @@ export type NavKey =
 export function Shell(props: {
   t: Dict;
   mode: ModeName;
-  accent: AccentName;
   lang: Lang;
   current: NavKey;
   account: string | null; // apelido ou e-mail de quem está logado, ou null
   isAdmin: boolean;
   onMode: (m: ModeName) => void;
-  onAccent: (a: AccentName) => void;
   onLang: (l: Lang) => void;
   onNav: (where: NavKey) => void;
   onAccount: () => void;
@@ -103,7 +96,7 @@ export function Shell(props: {
   const { t } = props;
   const [menu, setMenu] = useState<"settings" | "more" | null>(null);
   const m = MODES[props.mode] ?? MODES.claro;
-  const a = ACCENTS[props.accent] ?? ACCENTS.azul;
+  const a = ACCENT;
   const vars = {
     "--bg": m.bg,
     "--panel": m.panel,
@@ -217,18 +210,6 @@ export function Shell(props: {
                       <button key={k} onClick={() => props.onMode(k)} className={choice(props.mode === k)}>
                         {k === "claro" ? t.themeLight : t.themeDark}
                       </button>
-                    ))}
-                  </div>
-                  <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t.accentColor}</p>
-                  <div className="mt-2 flex gap-2">
-                    {(Object.keys(ACCENTS) as AccentName[]).map((k) => (
-                      <button
-                        key={k}
-                        onClick={() => props.onAccent(k)}
-                        aria-label={`${t.accentColor}: ${k}`}
-                        className={`h-9 flex-1 rounded-lg border-2 ${props.accent === k ? "border-[var(--text)]" : "border-transparent"}`}
-                        style={{ background: ACCENTS[k].accent }}
-                      />
                     ))}
                   </div>
                 </div>

@@ -4,7 +4,7 @@
 // histórico, conta) e mostra a tela certa. "use client" = roda no navegador.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { applyLive } from "@/data/applyLive";
+import { applyLive, applyNewMaps, rankedMapCount } from "@/data/applyLive";
 import { BRAWLERS } from "@/data/brawlers";
 import { MAPS } from "@/data/maps";
 import type { Collected } from "@/lib/collector";
@@ -28,26 +28,32 @@ import {
   freshSession,
   isAdmin as checkAdmin,
   loadOverrides,
+  loadRecSummary,
   loadUserData,
   logVisit,
+  saveRecResult,
   saveScore,
   saveUserData,
   signIn,
   signUp,
+  type RecSummary,
   type Session,
 } from "@/lib/supabase";
+import { refreshPush, registerWorker } from "@/lib/push";
+import { goodMaps } from "@/lib/upgrade";
 import type { GameMap } from "@/lib/types";
 import DraftScreen from "./DraftScreen";
 import { AdminScreen } from "./admin";
 import { HistoryScreen } from "./history";
-import { AccountScreen, Home, MapPicker, MetaScreen, OwnedScreen } from "./screens";
+import { AccountScreen, DraftSetup, Home, MapPicker, MetaScreen, OwnedScreen, type DraftSetupChoice } from "./screens";
 import { CompareScreen, CountersScreen, LeaderboardScreen, QuizScreen } from "./tools";
-import { ACCENTS, MODES, PANEL, Shell, type AccentName, type ModeName, type NavKey } from "./ui";
+import { MODES, PANEL, Shell, type ModeName, type NavKey } from "./ui";
 
 type Screen =
   | "home"
   | "maps"
   | "draft"
+  | "setup"
   | "meta"
   | "counters"
   | "history"
@@ -64,6 +70,7 @@ const SYNC_EVERY = 10 * 60 * 1000; // busca partidas pela tag no máximo a cada 
 export default function App(props: { live: LiveMeta; collected: Collected | null; metaHistory: MetaDay[] }) {
   // Atualiza Brawlers, mapas e o motor com os dados do servidor antes de desenhar a tela.
   applyLive(props.live);
+  applyNewMaps(props.collected);
   setCollected(props.collected);
 
   const [screen, setScreen] = useState<Screen>("home");
@@ -72,6 +79,8 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
   const [map, setMap] = useState<GameMap | null>(null);
   const [round, setRound] = useState(0); // aumenta a cada "novo draft", para recomeçar do zero
   const [trio, setTrio] = useState(false); // escolhendo mapa para um draft em trio?
+  const [setup, setSetup] = useState<DraftSetupChoice | null>(null); // respostas do início do draft
+  const [recSummary, setRecSummary] = useState<RecSummary | null>(null);
   const [room, setRoom] = useState<string | null>(null); // código da sala atual
   const [roomInit, setRoomInit] = useState<{ state: RoomState; version: number } | null>(null);
   const [notice, setNotice] = useState<string | null>(null); // aviso rápido
@@ -79,7 +88,6 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
 
   // Preferências e dados salvos no navegador (e na conta, se estiver logado).
   const [mode, setMode] = useState<ModeName>("claro");
-  const [accent, setAccent] = useState<AccentName>("azul");
   const [lang, setLang] = useState<Lang>("pt");
   const [owned, setOwned] = useState<number[]>([]);
   const [onlyOwned, setOnlyOwned] = useState(false);
@@ -104,6 +112,17 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
   const t = STR[lang];
   const personal = useMemo(() => personalStats(history), [history]);
   const comfort = useMemo(() => comfortScores(roster), [roster]);
+  const alertMaps = useMemo(() => goodMaps(history, roster, BRAWLERS, MAPS), [history, roster]);
+  // Avisos ligados? Mantém a lista de mapas em dia (no máximo uma vez a cada 12 horas).
+  useEffect(() => {
+    const last = load<number>("bd-push-refresh", 0);
+    if (Date.now() - last < 12 * 3600 * 1000) return;
+    const timer = setTimeout(() => {
+      save("bd-push-refresh", Date.now());
+      refreshPush(alertMaps, lang);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [alertMaps, lang]);
 
   /** Grava tudo na conta (se estiver logado). Renova a sessão se precisar. */
   async function pushToAccount(changes: Partial<typeof data.current> = {}) {
@@ -156,7 +175,16 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
     try {
       const res = await fetch(`/api/battles?tag=${encodeURIComponent(myTag)}`);
       const json = (await res.json()) as {
-        items?: { date: string; mapGameId: number; mapName: string; win: boolean; played: number; team: number[]; enemies: number[] }[];
+        items?: {
+          date: string;
+          mapGameId: number;
+          mapName: string;
+          win: boolean;
+          played: number;
+          playedPower: number;
+          team: number[];
+          enemies: number[];
+        }[];
       };
       if (res.ok && json.items) {
         save("bd-last-sync", Date.now());
@@ -183,6 +211,21 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
         save("bd-history", merged);
         if (added > 0) pushToAccount({ history: merged });
         setSyncMessage(STR[load<string>("bd-lang", "pt") === "en" ? "en" : "pt"].syncDone(added));
+
+        // OS 6 GRÁTIS: um Brawler que você tem abaixo do nível 11 mas jogou no Ranked
+        // com nível 11 só pode ser um dos grátis da temporada. Marca sozinho.
+        const lowLevel = new Set(data.current.roster.filter((r) => r.power < 11).map((r) => r.id));
+        const found = json.items.filter((it) => it.playedPower >= 11 && lowLevel.has(it.played)).map((it) => it.played);
+        const nextFree = [...new Set([...data.current.free6, ...found])].slice(0, 6);
+        if (nextFree.length !== data.current.free6.length) {
+          const nextOwned = rankedOwned(data.current.roster, nextFree);
+          setFree6(nextFree);
+          setOwned(nextOwned);
+          save("bd-free6", nextFree);
+          save("bd-owned", nextOwned);
+          data.current = { ...data.current, free6: nextFree, owned: nextOwned };
+          pushToAccount({ free6: nextFree, owned: nextOwned });
+        }
       }
     } catch {
       // sem internet ou API fora do ar: tenta de novo na próxima vez
@@ -194,8 +237,6 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
   useEffect(() => {
     const savedMode = load<string>("bd-mode", "claro");
     if (savedMode in MODES) setMode(savedMode as ModeName);
-    const savedAccent = load<string>("bd-accent", "azul");
-    if (savedAccent in ACCENTS) setAccent(savedAccent as AccentName);
     const savedLang: Lang = load<string>("bd-lang", "pt") === "en" ? "en" : "pt";
     setLang(savedLang);
     const local = {
@@ -232,6 +273,10 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
         }
       });
     }
+
+    // Service worker (avisos no celular e instalar como app) e o resumo "as sugestões funcionam?".
+    registerWorker();
+    if (SUPABASE_ON) loadRecSummary().then(setRecSummary);
 
     // Mapas ativos hoje.
     fetch("/api/rotation")
@@ -270,10 +315,10 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
   }, [screen]);
 
   /** Cria uma sala nova no mapa escolhido e abre o draft. */
-  async function startRoom(m: GameMap) {
+  async function startRoom(m: GameMap, c: DraftSetupChoice | null) {
     setNotice(t.roomCreating);
     const code = newRoomCode();
-    const state: RoomState = { mapId: m.id, first: "mine", bans: [], mine: [], enemies: [], bansDone: false };
+    const state: RoomState = { mapId: m.id, first: c?.first ?? "mine", bans: [], mine: [], enemies: [], bansDone: c ? !c.bans : false };
     const ok = await createRoom(code, state);
     if (!ok) {
       setNotice(t.roomError);
@@ -306,12 +351,28 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
   function openDraft(m: GameMap, kind: "live" | "train" | "trio") {
     setNotice(null);
     setTraining(kind === "train");
-    if (kind === "trio") {
-      startRoom(m);
-      return;
-    }
+    setTrio(kind === "trio");
     leaveRoom();
     setMap(m);
+    if (kind === "train") {
+      setSetup(null);
+      setRound(round + 1);
+      setScreen("draft");
+    } else {
+      // Ao vivo e trio: primeiro a tela de início (bans e first pick).
+      setScreen("setup");
+    }
+    window.scrollTo({ top: 0 });
+  }
+
+  /** Respondeu o início do draft: abre o draft (ou cria a sala do trio). */
+  function startFromSetup(c: DraftSetupChoice) {
+    if (!map) return;
+    setSetup(c);
+    if (trio) {
+      startRoom(map, c);
+      return;
+    }
     setRound(round + 1);
     setScreen("draft");
   }
@@ -335,13 +396,12 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
   }
 
   const current: NavKey =
-    screen === "maps" || screen === "draft" ? (training ? "train" : "draft") : screen === "account" ? "home" : screen;
+    screen === "maps" || screen === "draft" || screen === "setup" ? (training ? "train" : "draft") : screen === "account" ? "home" : screen;
 
   return (
     <Shell
       t={t}
       mode={mode}
-      accent={accent}
       lang={lang}
       current={current}
       account={session ? nick || session.user.email : null}
@@ -349,10 +409,6 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
       onMode={(m: ModeName) => {
         setMode(m);
         save("bd-mode", m);
-      }}
-      onAccent={(a: AccentName) => {
-        setAccent(a);
-        save("bd-accent", a);
       }}
       onLang={(l: Lang) => {
         setLang(l);
@@ -370,11 +426,13 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
           live={props.live}
           metaHistory={props.metaHistory}
           battles={Math.round(props.collected?.battles ?? 0)}
+          mapCount={rankedMapCount(props.collected) ?? MAPS.length}
           ownedCount={owned.length}
           historyCount={history.length}
           rotation={rotation}
           showTrio={ROOMS_ENABLED}
           loggedIn={session !== null}
+          recSummary={recSummary}
           onGo={(where) => go(where)}
           onPickMap={(m: GameMap) => openDraft(m, "live")}
         />
@@ -390,6 +448,21 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
         />
       )}
 
+      {screen === "setup" && map && (
+        <DraftSetup
+          t={t}
+          lang={lang}
+          map={map}
+          title={trio ? t.trio : t.liveDraft}
+          ownedCount={owned.length}
+          onlyOwned={onlyOwned}
+          tag={tag}
+          onChangeMap={() => setScreen("maps")}
+          onEditOwned={() => go("owned")}
+          onStart={startFromSetup}
+        />
+      )}
+
       {screen === "draft" && map && (
         <DraftScreen
           key={round} // trocar a "key" faz o React recriar a tela do zero
@@ -402,11 +475,16 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
           personal={personal}
           comfort={comfort}
           room={room}
-          initial={roomInit}
+          initial={
+            roomInit ??
+            (setup && !training
+              ? { state: { mapId: map.id, first: setup.first, bans: [], mine: [], enemies: [], bansDone: !setup.bans }, version: 1 }
+              : null)
+          }
           onTrainScore={(score: number, mapName: string) => {
             const s = data.current.session;
             if (!s) return;
-            saveScore(s, data.current.nick || s.user.email.split("@")[0], score, mapName).then((ok) => ok && setNotice(t.lbSaved));
+            saveScore(s, (data.current.nick || s.user.email.split("@")[0]).slice(0, 20).padEnd(2, "_"), score, mapName).then((ok) => ok && setNotice(t.lbSaved));
           }}
           onToggleOnlyOwned={() => {
             save("bd-only-owned", !onlyOwned);
@@ -414,7 +492,7 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
           }}
           onEditOwned={() => go("owned")}
           onChangeMap={() => {
-            setTrio(room !== null); // trocar o mapa numa sala cria uma sala nova
+            if (!training) setTrio(room !== null); // trocar o mapa numa sala cria uma sala nova
             leaveRoom();
             setScreen("maps");
           }}
@@ -423,6 +501,9 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
             setRound(round + 1);
           }}
           onSave={(entry: HistoryEntry) => {
+            const s = data.current.session;
+            if (s && entry.followed !== undefined)
+              saveRecResult(s, { followed: entry.followed, win: entry.win, map: entry.map, brawler: entry.played });
             const next = mergeHistory(history, [entry]);
             setHistory(next);
             save("bd-history", next);
@@ -445,6 +526,8 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
           syncing={syncing}
           syncMessage={syncMessage}
           onSync={() => syncBattles(true)}
+          recSummary={recSummary}
+          alertMaps={alertMaps}
           onClear={() => {
             if (!window.confirm(t.clearConfirm)) return;
             setHistory([]);
@@ -487,6 +570,8 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
             pushToAccount({ free6: ids, owned: nextOwned });
           }}
           onDone={() => setScreen(back)}
+          rotation={rotation}
+          comfort={comfort}
         />
       )}
 

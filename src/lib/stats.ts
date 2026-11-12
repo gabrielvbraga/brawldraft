@@ -1,7 +1,7 @@
 // LÊ AS CONTAS DO COLETOR (no servidor), guardando por 1 hora.
 
 import { cacheLife } from "next/cache";
-import { slim, type Collected, type StoredStats } from "./collector";
+import { emptyStats, slim, type Collected, type StoredStats } from "./collector";
 import type { MetaDay } from "./metaChanges";
 import { keyHeaders } from "./supabase";
 
@@ -13,12 +13,18 @@ export async function getCollected(): Promise<Collected | null> {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
   try {
-    const res = await fetch(`${url}/rest/v1/stats?id=eq.ranked&select=data`, {
+    // Pede só as partes usadas no site (sem a lista de partidas já vistas, que é grande).
+    const fields = ["updatedAt", "battles", "maps", "vs", "with", "byRank", "recentMaps", "mapInfo"]
+      .map((f) => `${f}:data->${f}`)
+      .join(",");
+    const res = await fetch(`${url}/rest/v1/stats?id=eq.ranked&select=${fields}`, {
       headers: keyHeaders(key),
     });
     if (!res.ok) return null;
-    const rows = (await res.json()) as { data: StoredStats }[];
-    return rows[0]?.data ? slim(rows[0].data) : null;
+    const rows = (await res.json()) as Partial<StoredStats>[];
+    const row = rows[0];
+    if (!row) return null;
+    return slim({ ...emptyStats(), ...Object.fromEntries(Object.entries(row).filter(([, v]) => v !== null)) } as StoredStats);
   } catch {
     return null;
   }

@@ -1,0 +1,21 @@
+# COLETOR DE HORA EM HORA
+# O GitHub chama o coletor do site uma vez por hora (o plano grátis da Vercel só
+# deixa agendar uma vez por dia). A senha fica guardada no GitHub, em
+# Settings > Secrets and variables > Actions, com o nome CRON_SECRET.
+name: Coletor de partidas
+
+on:
+  schedule:
+    - cron: "17 * * * *" # todo dia, toda hora, no minuto 17
+  workflow_dispatch: # botão "Run workflow" para rodar na mão
+
+jobs:
+  coletar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Chamar o coletor
+        run: curl -fsS --max-time 100 "https://brawldraft-fawn.vercel.app/api/collect?key=${{ secrets.CRON_SECRET }}"
+      - name: Mandar os avisos no celular
+        if: always()
+        run: curl -fsS --max-time 70 "https://brawldraft-fawn.vercel.app/api/push/send?key=${{ secrets.CRON_SECRET }}" || echo "avisos ainda não configurados"

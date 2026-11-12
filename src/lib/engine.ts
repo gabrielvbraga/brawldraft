@@ -66,6 +66,17 @@ export function mapTip(map: GameMap): string | null {
   return OVERRIDES.tips[String(map.gameId)] || null;
 }
 
+/**
+ * Vantagem calculada das partidas reais, de -2 a +2, encolhida quando há poucas
+ * partidas (com 12 partidas vale pouco; com 100 ou mais, quase o valor inteiro).
+ */
+function realEdge(table: Record<string, [number, number]> | undefined, key: string): number | null {
+  const p = table?.[key];
+  if (!p || p[1] < 12) return null;
+  const wr = p[0] / p[1];
+  return clamp((wr - 0.5) * 8 * (p[1] / (p[1] + 15)), -2, 2);
+}
+
 /** % de vitórias (de 0 a 1) de uma chave, se tiver partidas suficientes. */
 function rate(table: Record<string, [number, number]> | undefined, key: string, minGames: number): number | null {
   const p = table?.[key];
@@ -95,8 +106,8 @@ function fromList(list: { strong: string; weak: string; value: number }[], a: Br
 export function matchupInfo(a: Brawler, b: Brawler): { value: number; specific: boolean } {
   const admin = fromList(OVERRIDES.counters, a, b);
   if (admin !== null) return { value: admin, specific: true };
-  const real = rate(COLLECTED?.vs, `${a.id}:${b.id}`, 25);
-  if (real !== null) return { value: clamp((real - 0.5) * 8, -2, 2), specific: true };
+  const real = realEdge(COLLECTED?.vs, `${a.id}:${b.id}`);
+  if (real !== null) return { value: real, specific: true };
   const hand = fromList(meta.counters, a, b);
   if (hand !== null) return { value: hand, specific: true };
   return { value: (BEATS[a.class]?.[b.class] ?? 0) - (BEATS[b.class]?.[a.class] ?? 0), specific: false };
@@ -113,8 +124,8 @@ export function synergy(a: Brawler, b: Brawler): number {
     if ((s.a === a.name && s.b === b.name) || (s.a === b.name && s.b === a.name)) return s.value;
   }
   const [x, y] = [a.id, b.id].sort((p, q) => p - q);
-  const real = rate(COLLECTED?.with, `${x}+${y}`, 25);
-  if (real !== null) return clamp((real - 0.5) * 8, 0, 2);
+  const real = realEdge(COLLECTED?.with, `${x}+${y}`);
+  if (real !== null) return Math.max(0, real);
   for (const s of meta.synergies) {
     if ((s.a === a.name && s.b === b.name) || (s.a === b.name && s.b === a.name)) return s.value;
   }
