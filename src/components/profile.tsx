@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { BRAWLERS } from "@/data/brawlers";
 import { MAPS } from "@/data/maps";
+import { achievements, mergeStats, type SiteStats } from "@/lib/achievements";
 import type { RecentSummary } from "@/lib/battlelog";
 import { mapName, modeName, type Dict, type Lang } from "@/lib/i18n";
 import type { Match } from "@/lib/matches";
@@ -17,6 +18,8 @@ import { CARD, H1, H2, INPUT, Icon, Pill, PrimaryButton, SUB, SmallButton } from
 export type ProfileData = {
   player: Player;
   rank: number | null;
+  bestRank: number | null;
+  stats: SiteStats | null;
   matches: Match[];
   recent: RecentSummary;
   views: { total: number; week: number };
@@ -67,7 +70,17 @@ function Stat(props: { label: string; children: React.ReactNode }) {
 
 // ================= PERFIL =================
 
-export function ProfileScreen(props: { t: Dict; lang: Lang; myTag: string; initialTag: string | null; onCompare: (tag: string) => void }) {
+export function ProfileScreen(props: {
+  t: Dict;
+  lang: Lang;
+  myTag: string;
+  initialTag: string | null;
+  onCompare: (tag: string) => void;
+  /** Números do site deste aparelho (para o próprio perfil mostrar as conquistas na hora). */
+  myStats: SiteStats;
+  /** Maior rank que apareceu no seu histórico. */
+  myBestRank: number | null;
+}) {
   const { t, lang } = props;
   const [input, setInput] = useState(props.initialTag ?? props.myTag ?? "");
   const [data, setData] = useState<ProfileData | null>(null);
@@ -117,6 +130,25 @@ export function ProfileScreen(props: { t: Dict; lang: Lang; myTag: string; initi
   const rw = ranked.filter((m) => m.done && m.win).length;
   const rl = ranked.filter((m) => m.done && !m.win).length;
   const maxed = p ? p.brawlers.filter((b) => b.power >= 11).length : 0;
+  const isMe = !!p && clean(props.myTag || "") === p.tag;
+  const bestRank = data
+    ? Math.max(data.bestRank ?? -1, data.rank ?? -1, isMe ? (props.myBestRank ?? -1) : -1)
+    : -1;
+  const ach =
+    p && data
+      ? achievements(
+          lang,
+          {
+            bestRank: bestRank >= 0 ? bestRank : null,
+            trophies: p.trophies,
+            brawlers: p.brawlers.length,
+            totalBrawlers: BRAWLERS.length,
+            maxed,
+            bestStreak: data.recent.bestStreak ?? 0,
+          },
+          isMe ? mergeStats(data.stats ?? {}, props.myStats) : data.stats,
+        )
+      : [];
   const topBrawlers = p ? [...p.brawlers].sort((a, b) => b.trophies - a.trophies).slice(0, allBrawlers ? 200 : 12) : [];
 
   return (
@@ -175,6 +207,7 @@ export function ProfileScreen(props: { t: Dict; lang: Lang; myTag: string; initi
           {/* Números */}
           <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Stat label={t.pRank}>{data.rank !== null ? <RankBadge lang={lang} rank={data.rank} /> : <span className="text-base text-[var(--faint)]">{t.pRankNone}</span>}</Stat>
+            <Stat label={t.pBestRank}>{bestRank >= 0 ? <RankBadge lang={lang} rank={bestRank} /> : <span className="text-base text-[var(--faint)]">—</span>}</Stat>
             <Stat label={t.pTrophies}>{nf(p.trophies)}</Stat>
             <Stat label={t.pBest}>{nf(p.highestTrophies)}</Stat>
             <Stat label={t.p3v3}>{nf(p.victories3v3)}</Stat>
@@ -185,6 +218,44 @@ export function ProfileScreen(props: { t: Dict; lang: Lang; myTag: string; initi
               <span className="text-base font-semibold text-[var(--faint)]">/{BRAWLERS.length}</span>
             </Stat>
             <Stat label={t.pMaxed}>{maxed}</Stat>
+            <Stat label={t.achTitle}>
+              {ach.filter((a) => a.done).length}
+              <span className="text-base font-semibold text-[var(--faint)]">/{ach.length}</span>
+            </Stat>
+          </section>
+
+          {/* Conquistas */}
+          <section className={`${CARD} p-5`}>
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 className={H2}>{t.achTitle}</h2>
+              <span className="text-sm text-[var(--soft)]">{t.achCount(ach.filter((a) => a.done).length, ach.length)}</span>
+            </div>
+            {(["game", "site"] as const).map((g) => (
+              <div key={g} className="mt-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{g === "game" ? t.achGame : t.achSite}</p>
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                  {ach
+                    .filter((a) => a.group === g)
+                    .sort((x, y) => Number(y.done) - Number(x.done))
+                    .map((a) => (
+                      <div
+                        key={a.id}
+                        title={a.how}
+                        className={`flex items-center gap-2.5 rounded-xl border p-2.5 ${a.done ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] opacity-45 grayscale"}`}
+                      >
+                        <span className="text-2xl" aria-hidden="true">
+                          {a.icon}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-bold">{a.name}</span>
+                          <span className="block text-[11px] leading-tight text-[var(--soft)]">{a.how}</span>
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            ))}
+            {!isMe && !data.stats && <p className="mt-3 text-xs text-[var(--faint)]">{t.achSiteNote}</p>}
           </section>
 
           {/* Partidas recentes */}
@@ -315,6 +386,7 @@ export function CompareScreen(props: { t: Dict; lang: Lang; myTag: string; initi
   };
   const rows: Row[] = [
     { label: t.cRank, get: (d) => d.rank ?? -1, show: (_d, v) => (v >= 0 ? <RankBadge lang={lang} rank={v} /> : <span className="text-[var(--faint)]">—</span>) },
+    { label: t.pBestRank, get: (d) => Math.max(d.bestRank ?? -1, d.rank ?? -1), show: (_d, v) => (v >= 0 ? <RankBadge lang={lang} rank={v} /> : <span className="text-[var(--faint)]">—</span>) },
     { label: t.pTrophies, get: (d) => d.player.trophies },
     { label: t.pBest, get: (d) => d.player.highestTrophies },
     { label: t.cLevel, get: (d) => d.player.expLevel },

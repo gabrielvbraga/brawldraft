@@ -29,6 +29,8 @@ export type RecentSummary = {
   wins: number;
   losses: number;
   ranked: number; // rounds de Ranked
+  /** Maior sequência de vitórias nas 25. */
+  bestStreak: number;
   trophyChange: number;
   /** Brawlers mais usados nas 25 partidas: [id, vezes] */
   mostPlayed: [number, number][];
@@ -41,7 +43,8 @@ export function parseBattlelog(items: RawItem[], tag: string): { matches: Match[
   const rounds: Round[] = [];
   let rank: number | null = null;
   let rankTime = "";
-  const summary: RecentSummary = { games: 0, wins: 0, losses: 0, ranked: 0, trophyChange: 0, mostPlayed: [], modes: [] };
+  const summary: RecentSummary = { games: 0, wins: 0, losses: 0, ranked: 0, bestStreak: 0, trophyChange: 0, mostPlayed: [], modes: [] };
+  let streak = 0;
   const played = new Map<number, number>();
   const modes = new Map<string, [number, number]>();
 
@@ -54,6 +57,8 @@ export function parseBattlelog(items: RawItem[], tag: string): { matches: Match[
     const lost = b.result === "defeat" || (typeof b.rank === "number" && !won);
     summary.games++;
     if (won) summary.wins++;
+    streak = won ? streak + 1 : 0;
+    summary.bestStreak = Math.max(summary.bestStreak, streak);
     if (lost) summary.losses++;
     if (typeof b.trophyChange === "number") summary.trophyChange += b.trophyChange;
     if (b.type === "soloRanked") summary.ranked++;

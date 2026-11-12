@@ -196,3 +196,26 @@ create table if not exists profile_views (
   primary key (tag, viewer, day)
 );
 alter table profile_views enable row level security;
+
+-- 13) MAIOR RANK E CONQUISTAS (v14)
+-- Maior rank do Ranked que o site já viu para cada tag (a API só mostra o rank atual).
+create table if not exists rank_best (
+  tag text primary key check (char_length(tag) <= 15),
+  best integer not null check (best between 0 and 21),
+  updated_at timestamptz not null default now()
+);
+alter table rank_best enable row level security;
+
+-- Guarda o rank e devolve o maior já visto. Só o servidor chama.
+create or replace function public.note_rank(p_tag text, p_rank integer) returns integer
+language sql security definer set search_path = public as $$
+  insert into rank_best (tag, best) values (p_tag, p_rank)
+  on conflict (tag) do update set best = greatest(rank_best.best, excluded.best), updated_at = now()
+  returning best;
+$$;
+revoke execute on function public.note_rank(text, integer) from public, anon, authenticated;
+
+-- Números do uso do site (drafts feitos, Brawler do dia, duelos) para as conquistas.
+alter table user_data add column if not exists stats jsonb not null default '{}'::jsonb;
+alter table user_data drop constraint if exists stats_tamanho;
+alter table user_data add constraint stats_tamanho check (pg_column_size(stats) < 2000) not valid;

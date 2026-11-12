@@ -52,6 +52,9 @@ import { HistoryScreen } from "./history";
 import { AccountScreen, DraftSetup, Home, MapPicker, MetaScreen, OwnedScreen, type DraftSetupChoice } from "./screens";
 import { CountersScreen, LeaderboardScreen, QuizScreen } from "./tools";
 import { CompareScreen, ProfileScreen } from "./profile";
+import { DailyScreen } from "./daily";
+import { DuelScreen } from "./duel";
+import { mergeStats, type SiteStats } from "@/lib/achievements";
 import { MODES, PANEL, Shell, type ModeName, type NavKey } from "./ui";
 
 type Screen =
@@ -68,6 +71,8 @@ type Screen =
   | "leaderboard"
   | "compare"
   | "profile"
+  | "daily"
+  | "duel"
   | "admin";
 
 const BY_ID = new Map(BRAWLERS.map((b) => [b.id, b]));
@@ -89,6 +94,8 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
   const [recSummary, setRecSummary] = useState<RecSummary | null>(null);
   const [profileTag, setProfileTag] = useState<string | null>(null); // perfil aberto por link (?perfil=TAG)
   const [compareWith, setCompareWith] = useState<string | null>(null);
+  const [duelCode, setDuelCode] = useState<string | null>(null); // duelo aberto por link (?duelo=CODIGO)
+  const [siteStats, setSiteStats] = useState<SiteStats>({}); // números do uso do site (conquistas)
   const [room, setRoom] = useState<string | null>(null); // código da sala atual
   const [roomInit, setRoomInit] = useState<{ state: RoomState; version: number } | null>(null);
   const [notice, setNotice] = useState<string | null>(null); // aviso rápido
@@ -113,13 +120,20 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
   const [admin, setAdmin] = useState(false);
 
   // Cópia sempre atual dos dados, para gravar na conta sem pegar valores velhos.
-  const data = useRef({ history, owned, roster, free6, tag, nick, session });
-  data.current = { history, owned, roster, free6, tag, nick, session };
+  const data = useRef({ history, owned, roster, free6, tag, nick, session, stats: siteStats });
+  data.current = { history, owned, roster, free6, tag, nick, session, stats: siteStats };
   const visited = useRef(new Set<string>());
 
   const t = STR[lang];
   const personal = useMemo(() => personalStats(history), [history]);
   const comfort = useMemo(() => comfortScores(roster), [roster]);
+  // Vitórias seguindo a sugestão (para as conquistas): contadas pelo histórico.
+  useEffect(() => {
+    const n = history.filter((h) => h.followed && h.win).length;
+    if (n > (data.current.stats.followedWins ?? 0)) bumpStats((s) => ({ ...s, followedWins: n }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history]);
+  const myBestRank = useMemo(() => history.reduce<number | null>((m, h) => (h.rank !== undefined && (m === null || h.rank > m) ? h.rank : m), null), [history]);
   const alertMaps = useMemo(() => goodMaps(history, roster, BRAWLERS, MAPS), [history, roster]);
   // Avisos ligados? Mantém a lista de mapas em dia (no máximo uma vez a cada 12 horas).
   useEffect(() => {
@@ -141,7 +155,16 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
       setSession(s);
       save("bd-session", s);
     }
-    saveUserData(s, { history: d.history, owned: d.owned, roster: d.roster, free6: d.free6, tag: d.tag, nick: d.nick });
+    saveUserData(s, { history: d.history, owned: d.owned, roster: d.roster, free6: d.free6, tag: d.tag, nick: d.nick, stats: d.stats });
+  }
+
+  /** Atualiza os números do site (drafts, Brawler do dia, duelos) e salva na conta. */
+  function bumpStats(change: (s: SiteStats) => SiteStats) {
+    const next = change(data.current.stats);
+    setSiteStats(next);
+    save("bd-stats", next);
+    data.current = { ...data.current, stats: next };
+    pushToAccount({ stats: next });
   }
 
   /** Busca os dados da conta e junta com os deste aparelho. */
@@ -155,6 +178,7 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
       free6: remote.free6 && remote.free6.length > 0 ? remote.free6 : local.free6,
       tag: remote.tag || local.tag,
       nick: remote.nick || local.nick,
+      stats: mergeStats(local.stats ?? {}, (remote.stats as SiteStats | undefined) ?? {}),
     };
     setHistory(merged.history);
     if (merged.history.length !== (remote.history as HistoryEntry[]).length) pushToAccount({ history: merged.history });
@@ -169,6 +193,8 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
     save("bd-free6", merged.free6);
     save("bd-tag", merged.tag);
     save("bd-nick", merged.nick);
+    setSiteStats(merged.stats);
+    save("bd-stats", merged.stats);
     saveUserData(s, merged);
     setAdmin(await checkAdmin(s));
   }
@@ -260,6 +286,7 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
       tag: load<string>("bd-tag", ""),
       nick: load<string>("bd-nick", ""),
       session: null,
+      stats: load<SiteStats>("bd-stats", {}),
     };
     setHistory(local.history);
     setOwned(local.owned);
@@ -267,6 +294,7 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
     setFree6(local.free6);
     setTag(local.tag);
     setNick(local.nick);
+    setSiteStats(local.stats);
     // Com os Brawlers da tag, a sugestão já começa mostrando só os seus.
     setOnlyOwned(load<boolean>("bd-only-owned", local.roster.length > 0));
     data.current = { ...data.current, ...local };
@@ -299,6 +327,15 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
 
     // Histórico automático pela tag.
     if (local.tag) syncBattles();
+
+    // Abriu um link de duelo (?duelo=CODIGO) ou do jogo do dia (?jogo=dia)?
+    const params = new URLSearchParams(window.location.search);
+    const duelo = params.get("duelo");
+    if (duelo && /^[A-Z0-9]{4,8}$/i.test(duelo)) {
+      setDuelCode(duelo.toUpperCase());
+      setScreen("duel");
+    }
+    if (params.get("jogo") === "dia") setScreen("daily");
 
     // Abriu um link de perfil (?perfil=TAG)? Mostra o perfil.
     const perfil = new URLSearchParams(window.location.search).get("perfil");
@@ -402,7 +439,8 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
     setNotice(null);
     if (where === "profile") setProfileTag(null);
     if (where === "compare") setCompareWith(null);
-    if (where !== "profile" && window.location.search.includes("perfil=")) window.history.replaceState(null, "", "/");
+    if (where === "duel") setDuelCode(null);
+    if (/perfil=|duelo=|jogo=/.test(window.location.search)) window.history.replaceState(null, "", "/");
     if (where !== "owned") leaveRoom();
     if (where === "draft" || where === "train" || where === "trio") {
       setTraining(where === "train");
@@ -531,6 +569,7 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
             setRound(round + 1);
           }}
           tag={tag}
+          onDraftDone={() => bumpStats((s) => ({ ...s, drafts: (s.drafts ?? 0) + 1 }))}
           onSave={(entry: HistoryEntry) => {
             const s = data.current.session;
             if (s && entry.followed !== undefined)
@@ -641,6 +680,28 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
 
       {screen === "compare" && <CompareScreen key={compareWith ?? "c"} t={t} lang={lang} myTag={tag} initialB={compareWith ?? undefined} />}
 
+      {screen === "daily" && (
+        <DailyScreen
+          t={t}
+          lang={lang}
+          onResult={(won, st) =>
+            bumpStats((s) => ({ ...s, dailyWins: (s.dailyWins ?? 0) + (won ? 1 : 0), dailyBestStreak: Math.max(s.dailyBestStreak ?? 0, st.best) }))
+          }
+        />
+      )}
+
+      {screen === "duel" && (
+        <DuelScreen
+          key={duelCode ?? "novo"}
+          t={t}
+          lang={lang}
+          nick={nick}
+          initialCode={duelCode}
+          rotation={rotation}
+          onResult={(won) => bumpStats((s) => ({ ...s, duelsPlayed: (s.duelsPlayed ?? 0) + 1, duelsWon: (s.duelsWon ?? 0) + (won ? 1 : 0) }))}
+        />
+      )}
+
       {screen === "profile" && (
         <ProfileScreen
           key={profileTag ?? "me"}
@@ -648,6 +709,8 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
           lang={lang}
           myTag={tag}
           initialTag={profileTag}
+          myStats={siteStats}
+          myBestRank={myBestRank}
           onCompare={(other) => {
             go("compare");
             setCompareWith(other === tag.replace(/^#/, "").toUpperCase() ? null : other);

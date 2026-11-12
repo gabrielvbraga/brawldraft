@@ -51,6 +51,8 @@ export default function DraftScreen(props: {
   onSave: (entry: HistoryEntry) => void;
   /** Tag do jogador: com ela, o site descobre sozinho o resultado da partida. */
   tag?: string;
+  /** Avisado uma vez quando um draft ao vivo termina (para as conquistas). */
+  onDraftDone?: () => void;
   /** Código da sala de draft em trio (null = draft só neste aparelho). */
   room?: string | null;
   /** Estado inicial vindo da sala (quando alguém entra numa sala que já existe). */
@@ -146,6 +148,14 @@ export default function DraftScreen(props: {
   const auto: Target | null = !bansDone && bans.length < MAX_BANS ? "ban" : turn;
   const target = training ? auto : (manual ?? auto);
   const finished = auto === null;
+  const doneReported = useRef(false);
+  useEffect(() => {
+    if (finished && !training && !doneReported.current) {
+      doneReported.current = true;
+      props.onDraftDone?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finished, training]);
   // Draft "sem bans" (escolhido no início): esconde a faixa de banidos.
   const noBans = !training && bansDone && bans.length === 0 && manual !== "ban";
 

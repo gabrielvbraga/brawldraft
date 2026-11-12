@@ -78,6 +78,8 @@ export type NavKey =
   | "leaderboard"
   | "compare"
   | "profile"
+  | "daily"
+  | "duel"
   | "admin";
 
 /** Moldura de todas as páginas: barra do topo, menu, configurações, conta e rodapé. */
@@ -128,6 +130,8 @@ export function Shell(props: {
   ];
   const more: { key: NavKey; label: string }[] = [
     { key: "profile", label: t.profile },
+    { key: "duel", label: t.duelTitle },
+    { key: "daily", label: t.dailyTitle },
     { key: "owned", label: t.myBrawlers },
     { key: "quiz", label: t.quiz },
     { key: "leaderboard", label: t.leaderboard },

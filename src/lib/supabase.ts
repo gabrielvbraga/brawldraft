@@ -110,24 +110,34 @@ export type UserData = {
   tag?: string | null;
   roster?: RosterItem[];
   free6?: number[];
+  stats?: import("./achievements").SiteStats;
 };
 
 export async function loadUserData(s: Session): Promise<UserData | null> {
-  const rows = await rest<UserData[]>(`user_data?user_id=eq.${s.user.id}&select=history,owned,nick,tag,roster,free6`, {
-    token: s.access_token,
-  });
+  const base = `user_data?user_id=eq.${s.user.id}&select=history,owned,nick,tag,roster,free6`;
+  // "stats" só existe depois de rodar o SQL da v14; sem ela, lê o resto normalmente.
+  const rows =
+    (await rest<UserData[]>(`${base},stats`, { token: s.access_token })) ?? (await rest<UserData[]>(base, { token: s.access_token }));
   if (!rows) return null;
   return rows[0] ?? { history: [], owned: [] };
 }
 
 export async function saveUserData(s: Session, data: UserData): Promise<boolean> {
-  const r = await rest<unknown>("user_data", {
-    method: "POST",
-    token: s.access_token,
-    // "merge-duplicates" = se a linha já existe, atualiza em vez de dar erro.
-    prefer: "resolution=merge-duplicates",
-    body: JSON.stringify({ user_id: s.user.id, ...data, updated_at: new Date().toISOString() }),
-  });
+  const send = (d: UserData) =>
+    rest<unknown>("user_data", {
+      method: "POST",
+      token: s.access_token,
+      // "merge-duplicates" = se a linha já existe, atualiza em vez de dar erro.
+      prefer: "resolution=merge-duplicates",
+      body: JSON.stringify({ user_id: s.user.id, ...d, updated_at: new Date().toISOString() }),
+    });
+  let r = await send(data);
+  // Sem a coluna "stats" (SQL da v14 ainda não rodado): salva o resto.
+  if (r === null && data.stats !== undefined) {
+    const { stats: _ignore, ...rest_ } = data;
+    void _ignore;
+    r = await send(rest_);
+  }
   return r !== null;
 }
 

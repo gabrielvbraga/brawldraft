@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { parseBattlelog, type RawItem } from "@/lib/battlelog";
 import { fetchPlayer } from "@/lib/player";
 import { pushDb } from "@/lib/pushdb";
+import type { SiteStats } from "@/lib/achievements";
 import { cleanTag, scApi } from "@/lib/supercell";
 
 async function countViews(tag: string, since?: string): Promise<number> {
@@ -49,10 +50,21 @@ export async function GET(request: Request) {
     });
   }
   const weekAgo = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
-  const [total, week] = await Promise.all([countViews(tag), countViews(tag, weekAgo)]);
+  const [total, week, bestRank, stats] = await Promise.all([
+    countViews(tag),
+    countViews(tag, weekAgo),
+    // Maior rank já visto: guarda o de agora e devolve o maior.
+    rank !== null
+      ? pushDb<number>("rpc/note_rank", { method: "POST", body: JSON.stringify({ p_tag: tag, p_rank: rank }) })
+      : pushDb<{ best: number }[]>(`rank_best?tag=eq.${tag}&select=best`).then((r) => r?.[0]?.best ?? null),
+    // Números do site (para as conquistas): só se UMA conta tiver essa tag.
+    pushDb<{ stats: SiteStats }[]>(`user_data?tag=in.(${tag},${encodeURIComponent("#" + tag)})&select=stats`).then((r) =>
+      r && r.length === 1 ? r[0].stats : null,
+    ),
+  ]);
 
   return Response.json(
-    { player, rank, matches, recent: summary, views: { total, week } },
+    { player, rank, bestRank: typeof bestRank === "number" ? Math.max(bestRank, rank ?? 0) : rank, matches, recent: summary, views: { total, week }, stats },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
