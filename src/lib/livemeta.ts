@@ -143,6 +143,40 @@ async function fetchPage(url: string): Promise<string | null> {
  * (aí o site usa os dados salvos). Um mapa que falhar fica só sem dados novos.
  */
 /**
+ * Lê a lista do Ranked do seemeta. Cada Brawler aparece como "Nome · 51,4% · Pick 2,3%".
+ * Só aceita linhas nesse formato (com "Pick"): assim ignora os quadros de cima da página,
+ * que são de partidas de TROFÉUS por modo e têm % bem mais altos.
+ */
+export function parsePickList(html: string, knownNames: string[]): MetaRow[] {
+  const byKey = new Map(knownNames.map((n) => [normalize(n), n]));
+  const parts = html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, "\n")
+    .replace(/&amp;/g, "&")
+    .replace(/&#x27;|&#39;|&apos;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .split("\n")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const rows: MetaRow[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i + 2 < parts.length; i++) {
+    const name = byKey.get(normalize(parts[i]));
+    if (!name || seen.has(name)) continue;
+    const rate = parts[i + 1].match(/^(\d{1,2}[.,]\d)\s*%$/);
+    if (!rate) continue;
+    // "Pick 2.3%" pode vir junto ou separado ("Pick" e "2.3%").
+    const joined = `${parts[i + 2]} ${parts[i + 3] ?? ""}`;
+    const pick = joined.match(/^Pick\s*(\d{1,2}[.,]\d)\s*%/i);
+    if (!pick) continue;
+    seen.add(name);
+    rows.push({ name, wins: toNumber(rate[1]), use: toNumber(pick[1]) });
+  }
+  return rows.sort((a, b) => b.wins - a.wins);
+}
+
+/**
  * Ranking COMPLETO do Ranked (todos os Brawlers, com % de vitórias), lido do seemeta.com.
  * O topbrawl só mostra os 10 primeiros; para ordenar todos por % de vitórias, precisamos
  * da lista inteira. Devolve [] se não conseguir ler (aí o site usa o top 10 do topbrawl).
@@ -150,7 +184,7 @@ async function fetchPage(url: string): Promise<string | null> {
 export async function fullRanking(knownNames: string[]): Promise<MetaRow[]> {
   const html = await fetchPage(FULL_LIST);
   if (!html) return [];
-  const rows = parseTable(html, knownNames).filter((r) => r.wins >= 30 && r.wins <= 75);
+  const rows = parsePickList(html, knownNames).filter((r) => r.wins >= 30 && r.wins <= 75);
   // Só confia se achou a maior parte dos Brawlers.
   return rows.length >= knownNames.length * 0.6 ? rows : [];
 }
