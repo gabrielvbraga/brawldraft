@@ -35,7 +35,7 @@ export async function GET(request: Request) {
     const ranked = all.find((it) => it.battle?.type === "soloRanked") ?? null;
     // Sem Ranked: mostra os tipos das últimas partidas, para saber o que a API está mandando.
     const types = all.map((it) => `${isoTime(it.battleTime ?? "").slice(0, 16)} ${it.battle?.type ?? "?"} ${it.event?.mode ?? "?"}`);
-    return Response.json({ ranked, last: types });
+    return Response.json({ ranked, last: types, sample: ranked ? undefined : all[0] });
   }
 
   const me = `#${tag}`;
