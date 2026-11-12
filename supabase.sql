@@ -185,3 +185,14 @@ create table if not exists push_subs (
   created_at timestamptz not null default now()
 );
 alter table push_subs enable row level security;
+
+-- 12) VISUALIZAÇÕES DE PERFIL (v13)
+-- Cada pessoa que abre um perfil conta 1 vez por dia. "viewer" é um código embaralhado
+-- (não dá para descobrir quem é). Só o servidor lê e grava aqui.
+create table if not exists profile_views (
+  tag text not null check (char_length(tag) <= 15),
+  viewer text not null check (char_length(viewer) <= 40),
+  day date not null default current_date,
+  primary key (tag, viewer, day)
+);
+alter table profile_views enable row level security;

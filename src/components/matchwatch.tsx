@@ -56,6 +56,7 @@ export function MatchWatch(props: {
           enemies: m.enemies.map(name),
           win: m.win,
           rounds: m.rounds,
+          ...(m.rank !== undefined ? { rank: m.rank } : {}),
           source: "auto",
           ...(m.played in pending.current.followed ? { followed: pending.current.followed[m.played] } : {}),
         };

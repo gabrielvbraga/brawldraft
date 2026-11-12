@@ -44,12 +44,14 @@ import { refreshPush, registerWorker } from "@/lib/push";
 import { goodMaps } from "@/lib/upgrade";
 import type { Match } from "@/lib/matches";
 import { findDraftMatch, type PendingDraft } from "@/lib/pending";
+import { TiltBanner } from "./insights";
 import type { GameMap } from "@/lib/types";
 import DraftScreen from "./DraftScreen";
 import { AdminScreen } from "./admin";
 import { HistoryScreen } from "./history";
 import { AccountScreen, DraftSetup, Home, MapPicker, MetaScreen, OwnedScreen, type DraftSetupChoice } from "./screens";
-import { CompareScreen, CountersScreen, LeaderboardScreen, QuizScreen } from "./tools";
+import { CountersScreen, LeaderboardScreen, QuizScreen } from "./tools";
+import { CompareScreen, ProfileScreen } from "./profile";
 import { MODES, PANEL, Shell, type ModeName, type NavKey } from "./ui";
 
 type Screen =
@@ -65,6 +67,7 @@ type Screen =
   | "quiz"
   | "leaderboard"
   | "compare"
+  | "profile"
   | "admin";
 
 const BY_ID = new Map(BRAWLERS.map((b) => [b.id, b]));
@@ -84,6 +87,8 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
   const [trio, setTrio] = useState(false); // escolhendo mapa para um draft em trio?
   const [setup, setSetup] = useState<DraftSetupChoice | null>(null); // respostas do início do draft
   const [recSummary, setRecSummary] = useState<RecSummary | null>(null);
+  const [profileTag, setProfileTag] = useState<string | null>(null); // perfil aberto por link (?perfil=TAG)
+  const [compareWith, setCompareWith] = useState<string | null>(null);
   const [room, setRoom] = useState<string | null>(null); // código da sala atual
   const [roomInit, setRoomInit] = useState<{ state: RoomState; version: number } | null>(null);
   const [notice, setNotice] = useState<string | null>(null); // aviso rápido
@@ -194,6 +199,7 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
               enemies: it.enemies.map(name),
               win: it.win,
               rounds: it.rounds,
+              ...(it.rank !== undefined ? { rank: it.rank } : {}),
               source: "auto" as const,
             };
           })
@@ -294,6 +300,13 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
     // Histórico automático pela tag.
     if (local.tag) syncBattles();
 
+    // Abriu um link de perfil (?perfil=TAG)? Mostra o perfil.
+    const perfil = new URLSearchParams(window.location.search).get("perfil");
+    if (perfil && /^[0-9A-Z]{3,14}$/i.test(perfil)) {
+      setProfileTag(perfil.toUpperCase());
+      setScreen("profile");
+    }
+
     // Abriu um link de sala (?sala=CODIGO)? Entra direto no draft em trio.
     const code = new URLSearchParams(window.location.search).get("sala");
     if (code && ROOMS_ENABLED) {
@@ -387,6 +400,9 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
   /** Navegação pelo menu do topo e pelos botões da tela inicial. */
   function go(where: NavKey | "trio" | "account") {
     setNotice(null);
+    if (where === "profile") setProfileTag(null);
+    if (where === "compare") setCompareWith(null);
+    if (where !== "profile" && window.location.search.includes("perfil=")) window.history.replaceState(null, "", "/");
     if (where !== "owned") leaveRoom();
     if (where === "draft" || where === "train" || where === "trio") {
       setTraining(where === "train");
@@ -425,6 +441,13 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
       onAccount={() => go("account")}
     >
       {notice && <p className={`${PANEL} mb-5 px-4 py-3 text-sm`}>{notice}</p>}
+
+      {/* Alerta de tilt: 3 derrotas seguidas no Ranked */}
+      {(screen === "home" || screen === "setup" || (screen === "draft" && !training)) && (
+        <div className="mb-5">
+          <TiltBanner t={t} history={history} />
+        </div>
+      )}
 
       {screen === "home" && (
         <Home
@@ -616,7 +639,21 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
 
       {screen === "leaderboard" && <LeaderboardScreen t={t} loggedIn={session !== null} myId={session?.user.id ?? null} />}
 
-      {screen === "compare" && <CompareScreen t={t} lang={lang} myTag={tag} />}
+      {screen === "compare" && <CompareScreen key={compareWith ?? "c"} t={t} lang={lang} myTag={tag} initialB={compareWith ?? undefined} />}
+
+      {screen === "profile" && (
+        <ProfileScreen
+          key={profileTag ?? "me"}
+          t={t}
+          lang={lang}
+          myTag={tag}
+          initialTag={profileTag}
+          onCompare={(other) => {
+            go("compare");
+            setCompareWith(other === tag.replace(/^#/, "").toUpperCase() ? null : other);
+          }}
+        />
+      )}
 
       {screen === "admin" && <AdminScreen t={t} lang={lang} session={session} isAdmin={admin} />}
     </Shell>

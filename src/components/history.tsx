@@ -12,6 +12,7 @@ import { groupBy, lastDays, type HistoryEntry } from "@/lib/storage";
 import { weekCard } from "@/lib/share";
 import type { RecSummary } from "@/lib/supabase";
 import { AlertsCard, RecCard, SeasonCharts, ShareButton } from "./extras";
+import { AlliesRivals, RankCard } from "./insights";
 import { CARD, H1, H2, Icon, Pill, PrimaryButton, SUB, SmallButton, choice } from "./ui";
 
 const BY_NAME = new Map(BRAWLERS.map((b) => [b.name, b]));
@@ -36,7 +37,7 @@ export function HistoryScreen(props: {
   alertMaps: number[];
 }) {
   const { t, lang, history } = props;
-  const [tab, setTab] = useState<"week" | "season" | "goals" | "matches" | "more">("week");
+  const [tab, setTab] = useState<"week" | "season" | "allies" | "goals" | "matches" | "more">("week");
   const [open, setOpen] = useState<string | null>(null);
 
   // ---- Relatório da semana ----
@@ -104,6 +105,9 @@ export function HistoryScreen(props: {
         <button onClick={() => setTab("season")} className={choice(tab === "season")}>
           {t.seasonTab}
         </button>
+        <button onClick={() => setTab("allies")} className={choice(tab === "allies")}>
+          {t.arTab}
+        </button>
         <button onClick={() => setTab("goals")} className={choice(tab === "goals")}>
           {t.goalsTitle}
         </button>
@@ -161,7 +165,14 @@ export function HistoryScreen(props: {
         </div>
       )}
 
-      {tab === "season" && <SeasonCharts t={t} history={history} />}
+      {tab === "season" && (
+        <div className="flex flex-col gap-4">
+          <RankCard t={t} lang={lang} history={history} />
+          <SeasonCharts t={t} history={history} />
+        </div>
+      )}
+
+      {tab === "allies" && <AlliesRivals t={t} history={history} />}
 
       {tab === "more" && (
         <div className="flex flex-col gap-4">

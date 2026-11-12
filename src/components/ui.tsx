@@ -77,6 +77,7 @@ export type NavKey =
   | "quiz"
   | "leaderboard"
   | "compare"
+  | "profile"
   | "admin";
 
 /** Moldura de todas as páginas: barra do topo, menu, configurações, conta e rodapé. */
@@ -126,6 +127,7 @@ export function Shell(props: {
     { key: "history", label: t.history },
   ];
   const more: { key: NavKey; label: string }[] = [
+    { key: "profile", label: t.profile },
     { key: "owned", label: t.myBrawlers },
     { key: "quiz", label: t.quiz },
     { key: "leaderboard", label: t.leaderboard },

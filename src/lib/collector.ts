@@ -106,10 +106,10 @@ export function addBattles(stats: StoredStats, seen: Set<string>, ownerTag: stri
 
     const ids = b.teams.map((team) => team.map((p) => p.brawler?.id).filter((x): x is number => typeof x === "number"));
 
-    // Faixa de Ranked: nas partidas de Ranked, o campo "trophies" do Brawler traz o rank (1 a 22).
+    // Faixa de Ranked: nas partidas de Ranked, o campo "trophies" do Brawler traz o rank (0 a 21).
     const ranks = b.teams.flat().map((p) => p.brawler?.trophies).filter((x): x is number => typeof x === "number");
     const avg = ranks.length ? ranks.reduce((s, x) => s + x, 0) / ranks.length : 0;
-    const band = avg >= 1 && avg <= 22 ? rankBand(avg) : null;
+    const band = ranks.length && avg >= 0 && avg <= 21 ? rankBand(avg) : null; // rank começa do zero (13 = Mítico II)
     const rankTable = band ? (stats.byRank[band] ??= {}) : null;
 
     // Rotação: guarda a data mais recente em que este mapa apareceu.
@@ -160,10 +160,8 @@ function shortHash(text: string): string {
 }
 
 /** Faixas de Ranked, do rank 1 ao 22 (3 ranks por faixa; Mestre e acima juntos). */
-export const RANK_BANDS = ["bronze", "silver", "gold", "diamond", "mythic", "legendary", "masters"] as const;
-export function rankBand(rank: number): string {
-  return RANK_BANDS[Math.min(6, Math.floor((Math.round(rank) - 1) / 3))];
-}
+export { RANK_BANDS, rankBand } from "./rank";
+import { rankBand } from "./rank";
 
 /** "20261111T190000.000Z" -> "2026-11-11T19:00:00.000Z" */
 function isoTime(t: string): string {

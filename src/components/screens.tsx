@@ -121,7 +121,7 @@ export function Home(props: {
   showTrio: boolean;
   loggedIn: boolean;
   recSummary: RecSummary | null;
-  onGo: (where: "draft" | "train" | "trio" | "meta" | "history" | "owned" | "account" | "counters" | "quiz" | "leaderboard" | "compare") => void;
+  onGo: (where: "draft" | "train" | "trio" | "meta" | "history" | "owned" | "account" | "counters" | "quiz" | "leaderboard" | "compare" | "profile") => void;
   onPickMap: (m: GameMap) => void;
 }) {
   const { t, lang, live } = props;
@@ -141,6 +141,7 @@ export function Home(props: {
     { key: "history" as const, title: `${t.history} (${props.historyCount})`, sub: t.historySub },
     { key: "owned" as const, title: `${t.myBrawlers} (${props.ownedCount})`, sub: t.importTitle },
     { key: "quiz" as const, title: t.quizTitle, sub: t.quizSub },
+    { key: "profile" as const, title: t.profile, sub: t.profileSub },
     { key: "compare" as const, title: t.compareTitle, sub: t.compareSub },
   ];
 

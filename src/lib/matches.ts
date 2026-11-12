@@ -11,6 +11,8 @@ export type Round = {
   playedPower: number;
   team: number[];
   enemies: number[];
+  /** Rank no Ranked nessa partida (0 = Bronze I ... 13 = Mítico II ... 21 = Pro). */
+  rank?: number;
 };
 
 export type Match = Round & {
@@ -45,6 +47,7 @@ export function groupRounds(rounds: Round[], now = Date.now()): Match[] {
       cur.played = r.played;
       cur.playedPower = Math.max(cur.playedPower, r.playedPower);
       cur.win = r.win; // provisório: a conta final é feita abaixo
+      if (r.rank !== undefined) cur.rank = r.rank;
     } else {
       out.push({ ...r, rounds: r.win ? [1, 0] : [0, 1], lastRound: r.date, done: false });
     }

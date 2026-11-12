@@ -16,6 +16,8 @@ export type HistoryEntry = {
   followed?: boolean;
   /** Placar em rounds [vencidos, perdidos] (o Ranked é melhor de 3). */
   rounds?: [number, number];
+  /** Rank no Ranked nessa partida (0 = Bronze I ... 13 = Mítico II ... 21 = Pro). */
+  rank?: number;
 };
 
 /** Um Brawler do jogador, como vem da importação pela tag. */
