@@ -53,13 +53,21 @@ export function applyLive(live: LiveMeta | null) {
 
 const MODES = ["Gem Grab", "Brawl Ball", "Heist", "Hot Zone", "Bounty", "Knockout"];
 
+/** Momento da última coleta (ou o mapa visto mais recentemente). */
+function refTime(collected: Collected): number {
+  const times = Object.values(collected.recentMaps ?? {}).map((w) => new Date(w).getTime());
+  const updated = collected.updatedAt ? new Date(collected.updatedAt).getTime() : 0;
+  return Math.max(updated, ...times.filter((x) => !Number.isNaN(x)), 0);
+}
+
 /**
  * MAPAS NOVOS: se o coletor viu partidas de Ranked num mapa que o site ainda não
  * conhece (nos últimos 7 dias), o mapa entra na lista sozinho, com foto e modo.
  */
 export function applyNewMaps(collected: Collected | null) {
   if (!collected?.mapInfo) return;
-  const limit = Date.now() - 7 * 86400000;
+  // Conta a partir da última coleta (e não do relógio), para a página poder ser montada antes.
+  const limit = refTime(collected) - 7 * 86400000;
   for (const [id, info] of Object.entries(collected.mapInfo)) {
     const gameId = Number(id);
     const seen = collected.recentMaps?.[id];
@@ -79,7 +87,8 @@ export function applyNewMaps(collected: Collected | null) {
 /** Quantos mapas apareceram no Ranked nos últimos 7 dias (null = sem dados suficientes). */
 export function rankedMapCount(collected: Collected | null): number | null {
   if (!collected?.recentMaps) return null;
-  const limit = Date.now() - 7 * 86400000;
+  // Conta a partir da última coleta (e não do relógio), para a página poder ser montada antes.
+  const limit = refTime(collected) - 7 * 86400000;
   const n = Object.values(collected.recentMaps).filter((w) => new Date(w).getTime() >= limit).length;
   return n >= 10 ? n : null;
 }
