@@ -1,23 +1,15 @@
 /* Estilos globais do site. O Tailwind cuida de quase tudo; aqui ficam só os ajustes extras. */
 @import "tailwindcss";
 
-html {
-  color-scheme: dark; /* barras de rolagem e campos no tom escuro */
-}
-
 body {
-  background: #07080b;
-  color: #ffffff;
+  margin: 0;
+  background: #f6f7f9;
+  color: #14171f;
 }
 
-/* Uma fonte só (Poppins). Os títulos usam a mesma fonte, só que em negrito. */
-.font-sans,
-.font-display {
-  font-family: var(--font-main), system-ui, sans-serif;
-}
-.font-display {
-  font-weight: 700;
-  letter-spacing: -0.01em;
+/* Uma fonte só (Inter) no site inteiro. */
+.font-sans {
+  font-family: var(--font-main), system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 /* Esconde a barra de rolagem (a rolagem continua funcionando com o dedo ou o mouse). */

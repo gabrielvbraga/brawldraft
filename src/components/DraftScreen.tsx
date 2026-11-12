@@ -1,17 +1,18 @@
 "use client";
-// TELA DO DRAFT. Serve para os dois modos:
+// TELA DO DRAFT. Serve para três modos:
 //   - ao vivo (training = false): você marca tudo e o site recomenda;
 //   - treino (training = true): o site joga pelo inimigo, com relógio e sem dicas;
 //   - trio (room = código da sala): igual ao ao vivo, mas sincronizado entre os três do time.
+// Extras: modo duo (você + amigo), alerta de armadilha, dica do mapa e nota final do draft.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BRAWLERS } from "@/data/brawlers";
-import { nextTurn, recommend, suggestBans, type PickStage, type Side } from "@/lib/engine";
+import { bestPairs, draftGrade, mapTip, nextTurn, recommend, suggestBans, type PickStage, type Side } from "@/lib/engine";
 import { className, modeName, type Dict, type Lang } from "@/lib/i18n";
 import { readRoom, writeRoom, type RoomState } from "@/lib/room";
 import type { HistoryEntry, Personal } from "@/lib/storage";
 import type { Brawler, GameMap } from "@/lib/types";
-import { BrawlerGrid, CARD, Icon, MODE_COLOR, MapThumb, PANEL, Part, SmallButton, Strip } from "./ui";
+import { BrawlerGrid, CARD, INPUT, Icon, MODE_COLOR, MapImage, PANEL, Part, Pill, PrimaryButton, SmallButton, Strip, choice } from "./ui";
 
 type Target = "ban" | "mine" | "enemy";
 
@@ -35,6 +36,10 @@ export default function DraftScreen(props: {
   owned: number[];
   onlyOwned: boolean;
   personal: Personal;
+  /** Bônus de conforto por Brawler (troféus do jogador). */
+  comfort: Record<number, number>;
+  /** Grava a nota do treino no placar (só faz algo se a pessoa estiver logada). */
+  onTrainScore: (score: number, mapName: string) => void;
   onToggleOnlyOwned: () => void;
   onEditOwned: () => void;
   onChangeMap: () => void;
@@ -119,6 +124,12 @@ export default function DraftScreen(props: {
   const [log, setLog] = useState<TrainLog[]>([]);
   const [played, setPlayed] = useState<number | null>(null); // Brawler que você jogou
   const [savedResult, setSavedResult] = useState(false);
+  // DUO: você + um amigo escolhem juntos.
+  const [duo, setDuo] = useState(false);
+  const [friendTag, setFriendTag] = useState("");
+  const [friendOwned, setFriendOwned] = useState<Set<number> | null>(null);
+  const [friendMsg, setFriendMsg] = useState<string | null>(null);
+  const [scoreSent, setScoreSent] = useState(false);
 
   // De quem é a vez, pela ordem do Ranked.
   const turn = nextTurn(first, mine.length, enemies.length);
@@ -145,9 +156,15 @@ export default function DraftScreen(props: {
         enemies,
         lang,
         personal: training ? undefined : props.personal,
+        comfort: training ? undefined : props.comfort,
         allowed: filterOn ? new Set(props.owned) : undefined,
       }),
-    [brawlers, map, bans, mine, enemies, lang, training, props.personal, filterOn, props.owned, stage],
+    [brawlers, map, bans, mine, enemies, lang, training, props.personal, props.comfort, filterOn, props.owned, stage],
+  );
+  // Ranking sem filtro de Brawlers (o amigo do duo pode ter outros).
+  const rankingAll = useMemo(
+    () => recommend({ stage, brawlers, map, bans, mine, enemies, lang, personal: props.personal, comfort: props.comfort }),
+    [brawlers, map, bans, mine, enemies, lang, props.personal, props.comfort, stage],
   );
   // Picks prováveis do inimigo: o mesmo motor, visto do lado deles.
   const enemyIdeas = useMemo(
@@ -193,6 +210,24 @@ export default function DraftScreen(props: {
     setMine(next.mine);
     setEnemies(next.enemies);
     push(next);
+  }
+
+  /** Carrega os Brawlers nível 11 do amigo (para as duplas). */
+  async function loadFriend() {
+    setFriendMsg(null);
+    try {
+      const res = await fetch(`/api/player?tag=${encodeURIComponent(friendTag)}`);
+      const data = (await res.json()) as { brawlers?: { id: number; power: number }[]; error?: string };
+      if (!res.ok || !data.brawlers) {
+        setFriendMsg(t.importErr(data.error ?? "api"));
+        return;
+      }
+      const ids = new Set(data.brawlers.filter((b) => b.power >= 11).map((b) => b.id));
+      setFriendOwned(ids);
+      setFriendMsg(t.friendLoaded(ids.size));
+    } catch {
+      setFriendMsg(t.importErr("api"));
+    }
   }
 
   function copyLink() {
@@ -258,6 +293,30 @@ export default function DraftScreen(props: {
   const grade = log.length > 0 ? Math.round((log.reduce((sum, l) => sum + l.ratio, 0) / log.length) * 100) : 0;
   const letter = grade >= 95 ? "S" : grade >= 88 ? "A" : grade >= 78 ? "B" : grade >= 65 ? "C" : "D";
 
+  // TREINO: quando termina, manda a nota para o placar (uma vez).
+  useEffect(() => {
+    if (training && finished && log.length > 0 && !scoreSent) {
+      setScoreSent(true);
+      props.onTrainScore(grade, map.name);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [training, finished, log.length]);
+
+  // Nota final do draft ao vivo (chance estimada de vitória).
+  const finalGrade = useMemo(() => {
+    if (!finished) return null;
+    const team = mine.map((id) => byId.get(id)).filter((b): b is Brawler => !!b);
+    const foes = enemies.map((id) => byId.get(id)).filter((b): b is Brawler => !!b);
+    return team.length === 3 && foes.length === 3 ? draftGrade(team, foes, map, lang) : null;
+  }, [finished, mine, enemies, byId, map, lang]);
+
+  // DUO: melhores pares (você + amigo) quando o seu time escolhe.
+  const pairs = useMemo(
+    () => (duo && target === "mine" ? bestPairs(rankingAll, filterOn ? new Set(props.owned) : null, friendOwned) : []),
+    [duo, target, rankingAll, filterOn, props.owned, friendOwned],
+  );
+  const tip = mapTip(map);
+
   function saveResult(win: boolean) {
     const me = played !== null ? byId.get(played) : undefined;
     if (!me) return;
@@ -270,128 +329,170 @@ export default function DraftScreen(props: {
       team: names(mine),
       enemies: names(enemies),
       win,
+      source: "manual",
     });
     setSavedResult(true);
   }
 
+  const stageTitle = stage === "first" ? t.stageFirst : stage === "last" ? t.stageLast : t.stageMiddle;
+  const stageTip = stage === "first" ? t.stageFirstTip : stage === "last" ? t.stageLastTip : t.stageMiddleTip;
+
   return (
-    <div>
-      {/* Cabeçalho: mapa, modo e botões */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-3">
-          <MapThumb map={map} width={80} />
+    <div className="flex flex-col gap-4">
+      {/* Cabeçalho: foto do mapa, nome, modo e botões */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-28 shrink-0 sm:w-36">
+            <MapImage map={map} height={150} zoomLabel={t.zoomMap} closeLabel={t.close} />
+          </div>
           <div>
-          <h1 className="font-display text-3xl leading-tight text-white">
-            {map.name}
-          </h1>
-          <p className="flex items-center gap-2 text-sm text-[var(--soft)]">
-            <span className="h-3 w-3 rounded-full border border-black" style={{ background: MODE_COLOR[map.mode] }} />
-            {modeName(lang, map.mode)}
-            {training && <span className="rounded bg-[var(--accent)] px-2 text-black">{t.training}</span>}
-          </p>
+            <h1 className="text-3xl font-extrabold tracking-tight">{map.name}</h1>
+            <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-[var(--soft)]">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: MODE_COLOR[map.mode] }} />
+              {modeName(lang, map.mode)}
+              {training && <Pill>{t.training}</Pill>}
+            </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <SmallButton onClick={props.onRestart}>{training ? t.trainAgain : t.newDraft}</SmallButton>
           <SmallButton onClick={props.onChangeMap}>{t.changeMap}</SmallButton>
         </div>
       </div>
 
+      {tip && !training && (
+        <p className="rounded-xl bg-[var(--accent-soft)] px-4 py-3 text-sm">
+          <strong>{t.mapTipTitle}:</strong> {tip}
+        </p>
+      )}
+
       {/* TRIO: código da sala e botão para copiar o link */}
       {room && (
-        <div className={`${PANEL} mt-3 flex flex-wrap items-center justify-between gap-2 px-3 py-2`}>
-          <span className="text-white">
-            {t.roomCode}: <span className="text-2xl tracking-widest text-[var(--accent)]">{room}</span>
+        <div className={`${PANEL} flex flex-wrap items-center justify-between gap-2 px-4 py-3`}>
+          <span>
+            {t.roomCode}: <span className="text-2xl font-extrabold tracking-widest text-[var(--accent)]">{room}</span>
           </span>
           <SmallButton onClick={copyLink}>{copied ? t.linkCopied : t.copyLink}</SmallButton>
-          <span className="w-full font-sans text-xs text-[var(--soft)]">{t.roomHelp}</span>
+          <span className="w-full text-xs text-[var(--soft)]">{t.roomHelp}</span>
         </div>
       )}
 
-      {/* Quem tem o first pick (no treino é sorteado, então só mostra) */}
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-white">
-        <span>{t.firstPick}:</span>
+      {/* First pick e modo solo/duo */}
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="font-semibold text-[var(--soft)]">{t.firstPick}:</span>
         {(["mine", "enemy"] as Side[]).map((s) => (
-          <button
-            key={s}
-            disabled={training}
-            onClick={() => setFirst(s)}
-            className={`rounded-lg border px-3 py-1 ${
-              first === s ? "border-[var(--accent)] bg-[var(--accent)] text-black" : "border-[var(--line)] bg-[var(--panel)] text-white"
-            }`}
-          >
+          <button key={s} disabled={training} onClick={() => setFirst(s)} className={choice(first === s)}>
             {s === "mine" ? t.myTeam : t.enemy}
           </button>
         ))}
+        {!training && (
+          <>
+            <span className="ml-2 font-semibold text-[var(--soft)]">·</span>
+            <button onClick={() => setDuo(false)} className={choice(!duo)}>
+              {t.modeSolo}
+            </button>
+            <button onClick={() => setDuo(true)} className={choice(duo)}>
+              {t.modeDuo}
+            </button>
+          </>
+        )}
       </div>
 
+      {duo && !training && (
+        <div className={`${PANEL} flex flex-wrap items-center gap-2 p-3`}>
+          <span className="text-sm text-[var(--soft)]">{t.duoHelp}</span>
+          <input value={friendTag} onChange={(e) => setFriendTag(e.target.value)} placeholder={t.friendTag} className={`${INPUT} w-44 uppercase`} />
+          <SmallButton onClick={loadFriend} disabled={!friendTag.trim()}>
+            {t.loadFriend}
+          </SmallButton>
+          {friendMsg && <span className="text-xs font-medium text-[var(--soft)]">{friendMsg}</span>}
+        </div>
+      )}
+
       {/* As três faixas: banidos, meu time e inimigos */}
-      <div className="mt-3 grid gap-2 md:grid-cols-3">
-        <Strip title={t.banned} color="#8a8a94" ids={bans} size={MAX_BANS} active={target === "ban"} byId={byId}
+      <div className="grid gap-2 md:grid-cols-3">
+        <Strip title={t.banned} color="#8a91a1" ids={bans} size={MAX_BANS} active={target === "ban"} byId={byId}
           onSelect={training ? undefined : () => setManual("ban")} onRemove={training ? undefined : remove} />
-        <Strip title={t.myTeam} color="#4da3ff" ids={mine} size={TEAM_SIZE} active={target === "mine"} byId={byId}
+        <Strip title={t.myTeam} color="#2f80ed" ids={mine} size={TEAM_SIZE} active={target === "mine"} byId={byId}
           onSelect={training ? undefined : () => setManual("mine")} onRemove={training ? undefined : remove} />
-        <Strip title={t.enemies} color="#ff5252" ids={enemies} size={TEAM_SIZE} active={target === "enemy"} byId={byId}
+        <Strip title={t.enemies} color="#e5533c" ids={enemies} size={TEAM_SIZE} active={target === "enemy"} byId={byId}
           onSelect={training ? undefined : () => setManual("enemy")} onRemove={training ? undefined : remove} />
       </div>
 
       {/* Aviso de quem é a vez (e o relógio, no treino) */}
-      <div className={`${PANEL} mt-3 flex items-center justify-between gap-2 px-3 py-2`}>
-        <span className="text-white">
+      <div className={`${PANEL} flex items-center justify-between gap-2 px-4 py-3`}>
+        <span className="font-semibold">
           {status}
           {training && target === "ban" ? ` (${myBans}/3)` : ""}
         </span>
         {clockOn && (
-          <span
-            className={`rounded-lg font-display px-3 py-1 text-xl ${left <= 5 ? "bg-red-500 text-white" : "bg-[var(--accent)] text-black"}`}
-          >
+          <span className={`rounded-lg px-3 py-1 text-xl font-extrabold text-white ${left <= 5 ? "bg-[#c0392b]" : "bg-[var(--accent)]"}`}>
             {t.seconds(Math.max(0, left))}
           </span>
         )}
         {!training && target === "ban" && !bansDone && <SmallButton onClick={() => setBansDone(true)}>{t.bansDone}</SmallButton>}
       </div>
 
-      {training && !finished && <p className="mt-2 font-sans text-xs text-[var(--soft)]">{t.trainIntro}</p>}
+      {training && !finished && <p className="text-xs text-[var(--soft)]">{t.trainIntro}</p>}
 
       {/* TREINO TERMINADO: nota e revisão de cada escolha */}
       {training && finished && (
-        <section className={`${CARD} mt-4 p-4`}>
-          <h2 className="font-display text-xl text-white">
-            {t.trainResult}
-          </h2>
-          <div className="mt-2 flex items-center gap-3">
-            <span className="rounded-xl font-display bg-[var(--accent)] px-4 py-2 text-4xl text-black">{letter}</span>
-            <span className="text-white">
+        <section className={`${CARD} p-5`}>
+          <h2 className="text-xl font-bold">{t.trainResult}</h2>
+          <div className="mt-3 flex items-center gap-3">
+            <span className="rounded-xl bg-[var(--accent)] px-4 py-2 text-4xl font-extrabold text-white">{letter}</span>
+            <span className="font-semibold">
               {t.trainGrade}: {grade}/100
             </span>
           </div>
-          <div className="mt-3 flex flex-col gap-1 font-sans text-sm text-[var(--soft)]">
+          <div className="mt-3 flex flex-col gap-1 text-sm text-[var(--soft)]">
             {log.map((l, i) => (
               <span key={i}>
-                {i + 1}. {t.yourPick}: <b className="text-white">{l.picked}</b> ({Math.round(l.ratio * 100)}/100)
+                {i + 1}. {t.yourPick}: <b className="text-[var(--text)]">{l.picked}</b> ({Math.round(l.ratio * 100)}/100)
                 {l.timeout ? ` · ${t.timeout}` : ""}
                 {l.picked !== l.best ? ` · ${t.bestOption}: ${l.best}` : ""}
               </span>
             ))}
           </div>
-          <div className="mt-3">
-            <SmallButton onClick={props.onRestart}>{t.trainAgain}</SmallButton>
+          <div className="mt-4">
+            <PrimaryButton onClick={props.onRestart}>{t.trainAgain}</PrimaryButton>
           </div>
+        </section>
+      )}
+
+      {/* NOTA FINAL DO DRAFT (ao vivo e treino) */}
+      {finished && finalGrade && (
+        <section className={`${CARD} p-5`}>
+          <h2 className="text-xl font-bold">{t.gTitle}</h2>
+          <div className="mt-3 flex flex-wrap items-center gap-4">
+            <span className="rounded-xl bg-[var(--accent)] px-4 py-2 text-4xl font-extrabold text-white">{finalGrade.letter}</span>
+            <div className="min-w-[200px] flex-1">
+              <p className="font-semibold">{t.gChance(finalGrade.chance)}</p>
+              <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-[var(--bad-bg)]">
+                <div className="h-full rounded-full bg-[var(--good)]" style={{ width: `${finalGrade.chance}%` }} />
+              </div>
+            </div>
+          </div>
+          <ul className="mt-3 flex flex-col gap-1 text-sm">
+            {finalGrade.reasons.map((r) => (
+              <li key={r.text} className={r.good ? "text-[var(--good)]" : "text-[var(--bad)]"}>
+                {r.good ? "✓" : "✗"} {r.text}
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 
       {/* AO VIVO, DRAFT COMPLETO: salvar o resultado no histórico */}
       {!training && finished && (
-        <section className={`${CARD} mt-4 p-4`}>
-          <h2 className="font-display text-xl text-white">
-            {t.saveResult}
-          </h2>
+        <section className={`${CARD} p-5`}>
+          <h2 className="text-xl font-bold">{t.saveResult}</h2>
           {savedResult ? (
-            <p className="mt-2 font-sans text-sm text-green-300">{t.saved}</p>
+            <p className="mt-2 text-sm font-medium text-[var(--good)]">{t.saved}</p>
           ) : (
             <div>
-              <p className="mt-1 font-sans text-sm text-[var(--soft)]">{t.whoPlayed}</p>
-              <div className="mt-2 flex items-center gap-2">
+              <p className="mt-1 text-sm text-[var(--soft)]">{t.whoPlayed}</p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 {mine.map((id) => {
                   const b = byId.get(id);
                   if (!b) return null;
@@ -408,14 +509,14 @@ export default function DraftScreen(props: {
                 <button
                   disabled={played === null}
                   onClick={() => saveResult(true)}
-                  className="rounded-lg font-display bg-green-400 px-3 py-2 text-black disabled:opacity-40"
+                  className="rounded-xl bg-[#138a4a] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40"
                 >
                   {t.win}
                 </button>
                 <button
                   disabled={played === null}
                   onClick={() => saveResult(false)}
-                  className="rounded-lg font-display bg-red-400 px-3 py-2 text-black disabled:opacity-40"
+                  className="rounded-xl bg-[#c0392b] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40"
                 >
                   {t.loss}
                 </button>
@@ -427,21 +528,19 @@ export default function DraftScreen(props: {
 
       {/* AO VIVO, FASE DE BANS: sugestões de quem banir */}
       {!training && target === "ban" && (
-        <section className="mt-4">
-          <h2 className="font-display text-xl text-white">
-            {t.banIdeas}
-          </h2>
-          <p className="font-sans text-xs text-[var(--soft)]">{t.banIdeasSub}</p>
-          <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6">
+        <section>
+          <h2 className="text-xl font-bold">{t.banIdeas}</h2>
+          <p className="text-xs text-[var(--soft)]">{t.banIdeasSub}</p>
+          <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
             {banIdeas.map((b) => (
               <button
                 key={b.id}
                 onClick={() => add(b.id, "ban")}
-                className={`${CARD} flex flex-col items-center gap-1 p-2 transition hover:brightness-125 active:scale-95`}
+                className={`${CARD} flex flex-col items-center gap-1 p-2.5 transition hover:border-[var(--accent)] active:scale-95`}
               >
                 <Icon brawler={b} size={52} />
-                <span className="w-full truncate text-center text-xs text-white">{b.name}</span>
-                <span className="font-sans text-[10px] text-[var(--soft)]">
+                <span className="w-full truncate text-center text-xs font-semibold">{b.name}</span>
+                <span className="text-[10px] text-[var(--faint)]">
                   {map.top.includes(b.name) ? t.topOfMap(map.top.indexOf(b.name) + 1) : `Tier ${b.tier}`}
                 </span>
               </button>
@@ -452,8 +551,8 @@ export default function DraftScreen(props: {
 
       {/* AO VIVO, VEZ DO INIMIGO: picks prováveis deles (ou aviso de que os seus acabaram) */}
       {!training && target === "enemy" && (
-        <section className={`${PANEL} mt-4 p-4`}>
-          <h2 className="font-display text-xl text-white">{t.enemyTurnTitle}</h2>
+        <section className={`${CARD} p-4`}>
+          <h2 className="text-xl font-bold">{t.enemyTurnTitle}</h2>
           <p className="text-xs text-[var(--soft)]">{mine.length >= TEAM_SIZE ? t.myPicksDone : t.enemyTurnSub}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {enemyIdeas.map((r) => (
@@ -461,11 +560,40 @@ export default function DraftScreen(props: {
                 key={r.brawler.id}
                 onClick={() => add(r.brawler.id, "enemy")}
                 title={r.brawler.name}
-                className="flex w-16 flex-col items-center gap-1 rounded-xl border border-[var(--line)] p-1 transition hover:border-red-400"
+                className="flex w-16 flex-col items-center gap-1 rounded-xl border border-[var(--line)] p-1 transition hover:border-[var(--bad)]"
               >
                 <Icon brawler={r.brawler} size={48} />
-                <span className="w-full truncate text-center text-[10px] text-white">{r.brawler.name}</span>
+                <span className="w-full truncate text-center text-[10px] font-medium">{r.brawler.name}</span>
               </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* AO VIVO, DUO: melhores pares */}
+      {!training && target === "mine" && duo && pairs.length > 0 && (
+        <section className={`${CARD} p-4`}>
+          <h2 className="text-xl font-bold">{t.duoTitle}</h2>
+          <div className="mt-3 flex flex-col gap-2">
+            {pairs.map((p) => (
+              <div key={`${p.me.brawler.id}-${p.friend.brawler.id}`} className="flex items-center gap-3 rounded-xl border border-[var(--line)] p-2.5">
+                <button onClick={() => add(p.me.brawler.id, "mine")} className="flex items-center gap-2" title={t.addToTeam}>
+                  <Icon brawler={p.me.brawler} size={40} />
+                  <span className="text-left">
+                    <span className="block text-[10px] uppercase text-[var(--faint)]">{t.you}</span>
+                    <span className="block font-semibold">{p.me.brawler.name}</span>
+                  </span>
+                </button>
+                <span className="text-[var(--faint)]">+</span>
+                <button onClick={() => add(p.friend.brawler.id, "mine")} className="flex items-center gap-2" title={t.addToTeam}>
+                  <Icon brawler={p.friend.brawler} size={40} />
+                  <span className="text-left">
+                    <span className="block text-[10px] uppercase text-[var(--faint)]">{t.friend}</span>
+                    <span className="block font-semibold">{p.friend.brawler.name}</span>
+                  </span>
+                </button>
+                <span className="ml-auto rounded-lg bg-[var(--accent-soft)] px-2 py-1 text-sm font-bold text-[var(--accent)]">{p.score.toFixed(1)}</span>
+              </div>
             ))}
           </div>
         </section>
@@ -473,48 +601,41 @@ export default function DraftScreen(props: {
 
       {/* AO VIVO, SUA VEZ: recomendações para ESTE pick */}
       {!training && target === "mine" && (
-        <section className="mt-4">
+        <section>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="font-display text-xl text-white">
-                {stage === "first" ? t.stageFirst : stage === "last" ? t.stageLast : t.stageMiddle}
-              </h2>
-              <p className="text-xs text-[var(--soft)]">
-                {stage === "first" ? t.stageFirstTip : stage === "last" ? t.stageLastTip : t.stageMiddleTip}
-              </p>
+              <h2 className="text-xl font-bold">{stageTitle}</h2>
+              <p className="text-xs text-[var(--soft)]">{stageTip}</p>
             </div>
             <div className="flex gap-2">
               <SmallButton onClick={props.onToggleOnlyOwned}>{props.onlyOwned ? t.onlyMineOn : t.onlyMineOff}</SmallButton>
               <SmallButton onClick={props.onEditOwned}>{t.myBrawlers}</SmallButton>
             </div>
           </div>
-          {props.onlyOwned && props.owned.length === 0 && (
-            <p className="mt-1 font-sans text-xs text-[var(--soft)]">{t.onlyMineEmpty}</p>
-          )}
-          <div className="mt-2 flex flex-col gap-2">
+          {props.onlyOwned && props.owned.length === 0 && <p className="mt-1 text-xs text-[var(--soft)]">{t.onlyMineEmpty}</p>}
+          <div className="mt-3 flex flex-col gap-2">
             {top.map((r, i) => (
               <div key={r.brawler.id} className={CARD}>
-                <button
-                  onClick={() => setOpen(open === r.brawler.id ? null : r.brawler.id)}
-                  className="flex w-full items-center gap-3 px-3 py-2 text-left"
-                >
-                  <span className="w-6 text-center font-display text-2xl text-[var(--accent)]">
-                    {i + 1}
-                  </span>
+                <button onClick={() => setOpen(open === r.brawler.id ? null : r.brawler.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left">
+                  <span className="w-6 text-center text-xl font-extrabold text-[var(--faint)]">{i + 1}</span>
                   <Icon brawler={r.brawler} size={52} />
                   <span className="min-w-0 flex-1">
-                    <span className="block text-lg leading-tight text-white">
-                      {r.brawler.name}{" "}
-                      <span className="font-sans text-xs text-[var(--soft)]">{className(lang, r.brawler.class)}</span>
+                    <span className="block text-lg font-bold leading-tight">
+                      {r.brawler.name} <span className="text-xs font-normal text-[var(--faint)]">{className(lang, r.brawler.class)}</span>
                     </span>
-                    <span className="block font-sans text-xs text-[var(--soft)]">{r.reasons.join(" · ")}</span>
+                    <span className="block text-xs text-[var(--soft)]">{r.reasons.join(" · ")}</span>
+                    {r.trap && (
+                      <span className="mt-1 inline-block rounded-md bg-[var(--warn-bg)] px-2 py-0.5 text-[11px] font-semibold text-[var(--warn)]">
+                        ⚠ {t.trapWarn(r.trap)}
+                      </span>
+                    )}
                   </span>
-                  <span className="rounded-lg font-display bg-[var(--accent)] px-2 py-1 text-black">{r.score.toFixed(1)}</span>
+                  <span className="rounded-lg bg-[var(--accent-soft)] px-2.5 py-1 font-bold text-[var(--accent)]">{r.score.toFixed(1)}</span>
                 </button>
 
                 {/* Detalhe: de onde veio a nota */}
                 {open === r.brawler.id && (
-                  <div className="border-t-2 border-[var(--line)] px-3 py-2 font-sans text-sm text-[var(--soft)]">
+                  <div className="border-t border-[var(--line)] px-4 py-3 text-sm text-[var(--soft)]">
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
                       <Part label={t.partBase} value={r.parts.base} />
                       <Part label={t.partMap} value={r.parts.map} />
@@ -523,22 +644,21 @@ export default function DraftScreen(props: {
                       <Part label={t.partComp} value={r.parts.comp} />
                       <Part label={t.partRisk} value={r.parts.risk} />
                       <Part label={t.partPersonal} value={r.parts.personal} />
+                      <Part label={t.partComfort} value={r.parts.comfort} />
                     </div>
                     {mine.length < TEAM_SIZE && (
-                      <button
-                        onClick={() => add(r.brawler.id, "mine")}
-                        className="mt-2 rounded-lg font-display bg-[var(--accent)] px-3 py-1 text-black"
-                      >
-                        {t.addToTeam}
-                      </button>
+                      <div className="mt-3">
+                        <PrimaryButton onClick={() => add(r.brawler.id, "mine")}>{t.addToTeam}</PrimaryButton>
+                      </div>
                     )}
                   </div>
                 )}
               </div>
             ))}
+            {top.length === 0 && <p className="text-sm text-[var(--soft)]">{t.noOptions}</p>}
           </div>
           {ranking.length > 5 && (
-            <div className="mt-2 flex justify-center">
+            <div className="mt-3 flex justify-center">
               <SmallButton onClick={() => setShowAll(!showAll)}>{showAll ? t.seeLess : t.seeMore}</SmallButton>
             </div>
           )}
@@ -547,7 +667,7 @@ export default function DraftScreen(props: {
 
       {/* Grade com todos os Brawlers */}
       {!finished && (
-        <section className="mt-5">
+        <section className="mt-2">
           <BrawlerGrid
             brawlers={brawlers}
             placeholder={t.searchBrawler}

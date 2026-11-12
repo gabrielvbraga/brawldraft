@@ -1,43 +1,34 @@
 // ROTA /api/player?tag=XXXX
-// Busca o perfil do jogador na API oficial da Supercell e devolve os Brawlers
-// que ele tem e o nível de cada um. Roda no SERVIDOR: a chave fica escondida aqui.
-//
-// A chave da Supercell só aceita pedidos de IPs cadastrados, e a Vercel não tem IP fixo.
-// Por isso o pedido passa pelo intermediário gratuito da RoyaleAPI, que tem o IP fixo
-// 45.79.218.79 (o mesmo cadastrado na chave).
-//
-// A chave fica na Vercel, em Settings > Environment Variables, com o nome BRAWL_API_KEY.
+// Perfil do jogador pela API oficial: nome, troféus e cada Brawler com nível e troféus.
 
-const API = "https://bsproxy.royaleapi.dev/v1";
+import { cleanTag, scApi } from "@/lib/supercell";
 
 type RawPlayer = {
   name?: string;
-  brawlers?: { id?: number; name?: string; power?: number }[];
+  trophies?: number;
+  highestTrophies?: number;
+  "3vs3Victories"?: number;
+  brawlers?: { id?: number; power?: number; trophies?: number }[];
 };
 
 export async function GET(request: Request) {
-  const key = process.env.BRAWL_API_KEY;
-  if (!key) return Response.json({ error: "no-key" }, { status: 500 });
+  if (!process.env.BRAWL_API_KEY) return Response.json({ error: "no-key" }, { status: 500 });
+  const tag = cleanTag(new URL(request.url).searchParams.get("tag") ?? "");
+  if (!tag) return Response.json({ error: "bad-tag" }, { status: 400 });
 
-  // A tag pode vir com ou sem "#", com espaços ou letras minúsculas.
-  const raw = new URL(request.url).searchParams.get("tag") ?? "";
-  const tag = raw.toUpperCase().replace(/[^0-9A-Z]/g, "").replace(/O/g, "0");
-  if (tag.length < 3 || tag.length > 14) return Response.json({ error: "bad-tag" }, { status: 400 });
+  const r = await scApi<RawPlayer>(`/players/%23${tag}`);
+  if (r.status === 404) return Response.json({ error: "not-found" }, { status: 404 });
+  if (!r.data) return Response.json({ error: "api", status: r.status }, { status: 502 });
 
-  try {
-    const res = await fetch(`${API}/players/%23${tag}`, {
-      headers: { Authorization: `Bearer ${key}` },
-      cache: "no-store",
-    });
-    if (res.status === 404) return Response.json({ error: "not-found" }, { status: 404 });
-    if (!res.ok) return Response.json({ error: "api", status: res.status }, { status: 502 });
-
-    const player = (await res.json()) as RawPlayer;
-    const brawlers = (player.brawlers ?? [])
+  const p = r.data;
+  return Response.json({
+    tag,
+    name: p.name ?? "",
+    trophies: p.trophies ?? 0,
+    highestTrophies: p.highestTrophies ?? 0,
+    victories3v3: p["3vs3Victories"] ?? 0,
+    brawlers: (p.brawlers ?? [])
       .filter((b) => typeof b.id === "number")
-      .map((b) => ({ id: b.id as number, power: b.power ?? 1 }));
-    return Response.json({ name: player.name ?? "", brawlers });
-  } catch {
-    return Response.json({ error: "api" }, { status: 502 });
-  }
+      .map((b) => ({ id: b.id as number, power: b.power ?? 1, trophies: b.trophies ?? 0 })),
+  });
 }

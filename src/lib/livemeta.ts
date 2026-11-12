@@ -3,7 +3,7 @@
 // lista dos melhores Brawlers de cada uma. Roda no SERVIDOR do site (Vercel).
 //
 // A atualização automática vem do "use cache" + cacheLife: o Next.js guarda o
-// resultado e, depois de 8 horas, busca tudo de novo na próxima visita.
+// resultado e, depois de 12 horas, busca tudo de novo na próxima visita.
 // Ninguém precisa fazer nada.
 //
 // Se o topbrawl mudar o layout ou ficar fora do ar, a leitura falha e o site
@@ -11,7 +11,7 @@
 
 import { cacheLife } from "next/cache";
 
-export const REFRESH = 60 * 60 * 8; // 8 horas
+export const REFRESH = 60 * 60 * 12; // 12 horas
 
 const BASE = "https://topbrawl.com/rankeds";
 
@@ -149,7 +149,7 @@ export async function getLiveMeta(mapIds: number[], knownNames: string[]): Promi
     cacheLife({ stale: 60, revalidate: 600, expire: 3600 });
     return null;
   }
-  // Deu certo: guarda por 8 horas. Depois disso, a próxima visita busca de novo.
+  // Deu certo: guarda por 12 horas. Depois disso, a próxima visita busca de novo.
   cacheLife({ stale: 60 * 60, revalidate: REFRESH, expire: REFRESH * 14 });
 
   const maps: Record<number, MetaRow[]> = {};

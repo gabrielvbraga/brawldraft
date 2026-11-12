@@ -11,6 +11,9 @@
 // NEXT_PUBLIC_SUPABASE_URL.
 
 import { addBattles, decay, emptyStats, type RawBattle, type StoredStats } from "@/lib/collector";
+import { BRAWLERS } from "@/data/brawlers";
+import { MAPS } from "@/data/maps";
+import { getLiveMeta } from "@/lib/livemeta";
 import { keyHeaders } from "@/lib/supabase";
 
 export const maxDuration = 60; // segundos que a Vercel deixa esta rota rodar
@@ -91,8 +94,25 @@ export async function GET(request: Request) {
     body: JSON.stringify({ id: "ranked", data: stats, updated_at: stats.updatedAt }),
   });
 
+  // 6) Guarda o meta do topbrawl de hoje, para mostrar quem subiu e quem caiu.
+  let metaSaved = false;
+  const live = await getLiveMeta(
+    MAPS.map((m) => m.gameId),
+    BRAWLERS.map((b) => b.name),
+  );
+  if (live && !live.saved) {
+    const day = new Date().toISOString().slice(0, 10);
+    const r = await fetch(`${sbUrl}/rest/v1/meta_history`, {
+      method: "POST",
+      headers: { ...sb, Prefer: "resolution=merge-duplicates" },
+      body: JSON.stringify({ day, overall: live.overall }),
+    });
+    metaSaved = r.ok;
+  }
+
   return Response.json({
     ok: save.ok,
+    metaSaved,
     visitedPlayers: visited,
     newRankedBattles: added,
     totalBattles: stats.battles,

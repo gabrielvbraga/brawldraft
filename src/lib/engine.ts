@@ -1,17 +1,18 @@
 // MOTOR DE RECOMENDAÇÃO
-// Dá uma nota para cada Brawler disponível somando 6 fatores:
-//   base (meta + modo) + mapa + counter + sinergia + composição - risco + histórico pessoal
-// Dados usados (do mais forte para o mais fraco, quando existem):
-//   - partidas reais coletadas pelo coletor .. src/lib/collector.ts (mapa, counter e sinergia)
-//   - tier de cada Brawler no Ranked ......... src/data/brawlers.ts
-//   - os 5 mais fortes de cada mapa .......... src/data/maps.ts
-//   - counters e sinergias específicos ....... src/data/meta.json
-//   - regras gerais por classe (abaixo), quando não há dado específico
+// Dá uma nota para cada Brawler disponível somando estes fatores:
+//   base (meta + modo) + mapa + counter + sinergia + composição - risco + histórico pessoal + conforto
+//
+// De onde vêm os confrontos (counters e sinergias), do mais confiável para o menos:
+//   1. correções do administrador ........... painel do admin (tabela "overrides" no Supabase)
+//   2. partidas reais do coletor ............ src/lib/collector.ts
+//   3. lista feita à mão .................... src/data/meta.json
+//   4. regras gerais por classe ............. BEATS, logo abaixo
+// A força no mapa vem do meta do topbrawl (src/data/maps.ts e o meta ao vivo).
 
 import meta from "@/data/meta.json";
 import type { Collected } from "./collector";
 import { STR, className, modeName, type Lang } from "./i18n";
-import type { Personal } from "./storage";
+import type { HistoryEntry, Personal } from "./storage";
 import type { Brawler, GameMap, Recommendation, Tier } from "./types";
 
 export type Side = "mine" | "enemy";
@@ -43,12 +44,28 @@ const BEATS: Record<string, Record<string, number>> = {
   Support: {},
 };
 
-// ----- Partidas reais do coletor (quando existem) -----
+// ----- Dados que chegam depois que o site abre -----
+
 let COLLECTED: Collected | null = null;
-/** Recebe as contas do coletor. Chamado uma vez quando o site abre. */
+/** Recebe as contas do coletor. */
 export function setCollected(c: Collected | null) {
   COLLECTED = c;
 }
+
+/** Correções feitas pelo administrador no painel. Valem mais que tudo. */
+export type Overrides = {
+  counters: { strong: string; weak: string; value: number }[];
+  synergies: { a: string; b: string; value: number }[];
+  tips: Record<string, string>; // dica de cada mapa, pelo número do mapa no jogo
+};
+let OVERRIDES: Overrides = { counters: [], synergies: [], tips: {} };
+export function setOverrides(o: Overrides | null) {
+  OVERRIDES = o ?? { counters: [], synergies: [], tips: {} };
+}
+export function mapTip(map: GameMap): string | null {
+  return OVERRIDES.tips[String(map.gameId)] || null;
+}
+
 /** % de vitórias (de 0 a 1) de uma chave, se tiver partidas suficientes. */
 function rate(table: Record<string, [number, number]> | undefined, key: string, minGames: number): number | null {
   const p = table?.[key];
@@ -62,19 +79,39 @@ export type PickStage = "first" | "middle" | "last";
 // Pesos de cada fator. Mexer aqui muda o "jeito de pensar" do sistema.
 const W = { tier: 0.6, mode: 0.4, counter: 1.5, synergy: 1, risk: 0.4 };
 
-/** Vantagem de um Brawler sobre outro (dado específico tem prioridade sobre a classe). */
-function matchup(a: Brawler, b: Brawler): number {
-  // 1º: partidas reais (pelo menos 25 partidas entre os dois).
-  const real = rate(COLLECTED?.vs, `${a.id}:${b.id}`, 25);
-  if (real !== null) return clamp((real - 0.5) * 8, -2, 2);
-  for (const c of meta.counters) {
+/** Procura um par numa lista de counters ("strong" vence "weak"). */
+function fromList(list: { strong: string; weak: string; value: number }[], a: Brawler, b: Brawler): number | null {
+  for (const c of list) {
     if (c.strong === a.name && c.weak === b.name) return c.value;
     if (c.strong === b.name && c.weak === a.name) return -c.value;
   }
-  return (BEATS[a.class]?.[b.class] ?? 0) - (BEATS[b.class]?.[a.class] ?? 0);
+  return null;
 }
 
-function synergy(a: Brawler, b: Brawler): number {
+/**
+ * Vantagem de "a" sobre "b", de -2 (perde feio) a +2 (vence fácil), e se ela vem
+ * de um dado específico do par (admin, partidas reais, lista própria) ou só da classe.
+ */
+export function matchupInfo(a: Brawler, b: Brawler): { value: number; specific: boolean } {
+  const admin = fromList(OVERRIDES.counters, a, b);
+  if (admin !== null) return { value: admin, specific: true };
+  const real = rate(COLLECTED?.vs, `${a.id}:${b.id}`, 25);
+  if (real !== null) return { value: clamp((real - 0.5) * 8, -2, 2), specific: true };
+  const hand = fromList(meta.counters, a, b);
+  if (hand !== null) return { value: hand, specific: true };
+  return { value: (BEATS[a.class]?.[b.class] ?? 0) - (BEATS[b.class]?.[a.class] ?? 0), specific: false };
+}
+
+/** Vantagem de "a" sobre "b", de -2 (perde feio) a +2 (vence fácil). */
+export function matchup(a: Brawler, b: Brawler): number {
+  return matchupInfo(a, b).value;
+}
+
+/** O quanto "a" e "b" combinam no mesmo time, de 0 a 2. */
+export function synergy(a: Brawler, b: Brawler): number {
+  for (const s of OVERRIDES.synergies) {
+    if ((s.a === a.name && s.b === b.name) || (s.a === b.name && s.b === a.name)) return s.value;
+  }
   const [x, y] = [a.id, b.id].sort((p, q) => p - q);
   const real = rate(COLLECTED?.with, `${x}+${y}`, 25);
   if (real !== null) return clamp((real - 0.5) * 8, 0, 2);
@@ -146,6 +183,8 @@ type DraftState = {
   allowed?: Set<number>;
   /** Vitórias e derrotas do jogador com cada Brawler (vem do histórico). */
   personal?: Personal;
+  /** Bônus de conforto de cada Brawler (pelos troféus do jogador), de 0 a 1,5. */
+  comfort?: Record<number, number>;
   /** Idioma das frases de explicação. */
   lang?: Lang;
   /** Momento do pick: muda o peso do counter (vale mais no último pick). */
@@ -154,7 +193,7 @@ type DraftState = {
 
 /** Calcula o ranking completo, do melhor para o pior. */
 export function recommend(state: DraftState): Recommendation[] {
-  const { brawlers, map, bans, mine, enemies, allowed, personal } = state;
+  const { brawlers, map, bans, mine, enemies, allowed, personal, comfort } = state;
   const lang = state.lang ?? "pt";
   const t = STR[lang];
   const byId = new Map(brawlers.map((b) => [b.id, b]));
@@ -166,6 +205,8 @@ export function recommend(state: DraftState): Recommendation[] {
   const enemyPicksLeft = 3 - foes.length; // quantos picks o inimigo ainda tem para responder
   // No primeiro pick quase não há inimigos para counterar; no último, o counter é o principal.
   const counterWeight = W.counter * (state.stage === "last" ? 1.6 : state.stage === "first" ? 0.7 : 1);
+  // Brawlers que o inimigo ainda pode escolher (para o alerta de armadilha).
+  const free = brawlers.filter((x) => !used.has(x.id));
 
   const result: Recommendation[] = [];
 
@@ -228,9 +269,27 @@ export function recommend(state: DraftState): Recommendation[] {
     const record = personal?.[b.name];
     if (record && record.w + record.l >= 3) {
       const games = record.w + record.l;
-      const rate = record.w / games;
-      own = (rate - 0.5) * 4; // de -2 (0% de vitórias) a +2 (100%)
-      reasons.push(t.rPersonal(Math.round(rate * 100), games));
+      const r = record.w / games;
+      own = (r - 0.5) * 4; // de -2 (0% de vitórias) a +2 (100%)
+      reasons.push(t.rPersonal(Math.round(r * 100), games));
+    }
+
+    // 8) CONFORTO (os Brawlers com mais troféus do jogador)
+    const comf = comfort?.[b.id] ?? 0;
+    if (comf >= 0.5) reasons.push(t.rComfort);
+
+    // ALERTA DE ARMADILHA: um counter forte dele ainda está livre e o inimigo ainda escolhe.
+    let trap: string | undefined;
+    if (enemyPicksLeft > 0) {
+      let worst = 1.5; // só avisa de counter forte
+      for (const c of free) {
+        if (c.id === b.id) continue;
+        const v = matchup(c, b);
+        if (v >= worst) {
+          worst = v;
+          trap = c.name;
+        }
+      }
     }
 
     const parts = {
@@ -241,10 +300,141 @@ export function recommend(state: DraftState): Recommendation[] {
       comp,
       risk: -risk,
       personal: own,
+      comfort: comf,
     };
-    const score = parts.base + parts.map + parts.counter + parts.synergy + parts.comp + parts.risk + parts.personal;
-    result.push({ brawler: b, score, parts, reasons });
+    const score =
+      parts.base + parts.map + parts.counter + parts.synergy + parts.comp + parts.risk + parts.personal + parts.comfort;
+    result.push({ brawler: b, score, parts, reasons, trap });
   }
 
   return result.sort((x, y) => y.score - x.score);
+}
+
+// ======================= FERRAMENTAS EXTRAS =======================
+
+/**
+ * Quem vence "target" (counters) e quem perde para ele. Os confrontos com dado
+ * específico do par vêm primeiro; os que só seguem a regra da classe vêm depois.
+ */
+export function countersOf(target: Brawler, brawlers: Brawler[]) {
+  const all = brawlers
+    .filter((b) => b.id !== target.id)
+    .map((b) => ({ brawler: b, ...matchupInfo(b, target) }));
+  const order = (x: { value: number; specific: boolean }, y: { value: number; specific: boolean }) =>
+    Number(y.specific) - Number(x.specific) || Math.abs(y.value) - Math.abs(x.value);
+  return {
+    beatIt: all.filter((x) => x.value > 0).sort(order),
+    losesToIt: all.filter((x) => x.value < 0).sort(order),
+  };
+}
+
+/** Força de um time completo no mapa (para a nota final do draft). */
+function teamPower(team: Brawler[], foes: Brawler[], map: GameMap) {
+  let total = 0;
+  for (const b of team) {
+    const s = mapStrength(b, map);
+    total += s.base + s.bonus;
+    for (const f of foes) total += matchup(b, f) * 0.8;
+  }
+  for (let i = 0; i < team.length; i++) for (let j = i + 1; j < team.length; j++) total += synergy(team[i], team[j]);
+  const classes = new Set(team.map((b) => b.class));
+  total += (classes.size - team.length) * 1.2; // classes repetidas pesam contra
+  return total;
+}
+
+/** Os papéis que um time cobre (para apontar o que está faltando). */
+function roles(team: Brawler[]) {
+  const has = (c: string[]) => team.some((b) => c.includes(b.class));
+  return {
+    front: has(["Tank"]),
+    control: has(["Controller", "Artillery"]),
+    range: has(["Marksman", "Artillery"]),
+    burst: has(["Assassin", "Damage Dealer"]),
+  };
+}
+
+/** Nota final do draft: chance estimada de vitória do seu time e os motivos. */
+export function draftGrade(mine: Brawler[], enemies: Brawler[], map: GameMap, lang: Lang) {
+  const t = STR[lang];
+  const my = teamPower(mine, enemies, map);
+  const their = teamPower(enemies, mine, map);
+  // Curva suave: 3 pontos de diferença ≈ 70% de chance.
+  const chance = Math.round((1 / (1 + Math.exp(-(my - their) / 3.5))) * 100);
+  const reasons: { good: boolean; text: string }[] = [];
+
+  let myCounters = 0;
+  let theirCounters = 0;
+  for (const a of mine) for (const b of enemies) {
+    const v = matchup(a, b);
+    if (v >= 1) myCounters++;
+    if (v <= -1) theirCounters++;
+  }
+  if (myCounters > 0) reasons.push({ good: true, text: t.gCounters(myCounters) });
+  if (theirCounters > 0) reasons.push({ good: false, text: t.gCountered(theirCounters) });
+
+  const topHere = (team: Brawler[]) => team.filter((b) => mapStrength(b, map).pos >= 0).length;
+  const mt = topHere(mine);
+  const et = topHere(enemies);
+  if (mt > et) reasons.push({ good: true, text: t.gMap(mt) });
+  if (et > mt) reasons.push({ good: false, text: t.gMapEnemy(et) });
+
+  const r = roles(mine);
+  if (!r.front) reasons.push({ good: false, text: t.gNoTank });
+  if (!r.control) reasons.push({ good: false, text: t.gNoControl });
+  if (new Set(mine.map((b) => b.class)).size === mine.length && mine.length === 3)
+    reasons.push({ good: true, text: t.gBalanced });
+
+  const letter = chance >= 65 ? "A" : chance >= 55 ? "B" : chance >= 45 ? "C" : chance >= 35 ? "D" : "E";
+  return { chance, letter, reasons };
+}
+
+/** Melhores duplas (você + amigo) para um momento do draft. */
+export function bestPairs(
+  recs: Recommendation[],
+  mineAllowed: Set<number> | null,
+  friendAllowed: Set<number> | null,
+  amount = 5,
+) {
+  const mineList = recs.filter((r) => !mineAllowed || mineAllowed.has(r.brawler.id)).slice(0, 12);
+  const friendList = recs.filter((r) => !friendAllowed || friendAllowed.has(r.brawler.id)).slice(0, 12);
+  const pairs: { me: Recommendation; friend: Recommendation; score: number }[] = [];
+  const seen = new Set<string>(); // a mesma dupla com os papéis trocados conta uma vez só
+  for (const a of mineList)
+    for (const b of friendList) {
+      if (a.brawler.id === b.brawler.id) continue;
+      const key = [a.brawler.id, b.brawler.id].sort((x, y) => x - y).join("+");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const same = a.brawler.class === b.brawler.class ? -1.5 : 0.5;
+      pairs.push({ me: a, friend: b, score: a.score + b.score + synergy(a.brawler, b.brawler) + same });
+    }
+  return pairs.sort((x, y) => y.score - x.score).slice(0, amount);
+}
+
+/** O que pesou numa derrota (para a análise do histórico). */
+export function lossReasons(entry: HistoryEntry, brawlers: Brawler[], map: GameMap | undefined, lang: Lang): string[] {
+  const t = STR[lang];
+  const byName = new Map(brawlers.map((b) => [b.name, b]));
+  const me = byName.get(entry.played);
+  const team = entry.team.map((n) => byName.get(n)).filter((b): b is Brawler => !!b);
+  const foes = entry.enemies.map((n) => byName.get(n)).filter((b): b is Brawler => !!b);
+  const out: string[] = [];
+  if (me) {
+    const counters = foes.filter((f) => matchup(f, me) >= 1).map((f) => f.name);
+    if (counters.length) out.push(t.lCountered(me.name, counters.join(", ")));
+    if (map && mapStrength(me, map).pos < 0 && me.tier !== "S+" && me.tier !== "S") out.push(t.lWeakPick(me.name));
+  }
+  if (team.length === 3) {
+    const r = roles(team);
+    if (!r.front) out.push(t.gNoTank);
+    if (!r.control) out.push(t.gNoControl);
+    if (new Set(team.map((b) => b.class)).size < team.length) out.push(t.lRepeated);
+  }
+  if (map && foes.length && team.length) {
+    const theirTop = foes.filter((f) => mapStrength(f, map).pos >= 0).length;
+    const ourTop = team.filter((f) => mapStrength(f, map).pos >= 0).length;
+    if (theirTop > ourTop) out.push(t.gMapEnemy(theirTop));
+  }
+  if (out.length === 0) out.push(t.lNoClear);
+  return out;
 }

@@ -1,177 +1,233 @@
 "use client";
-// PEÇAS DE TELA usadas em várias páginas: moldura, botões, ícones e cores.
+// PEÇAS DE TELA usadas em várias páginas: moldura (topo, menu, rodapé), botões,
+// ícones, miniaturas de mapa e cores. Visual "Clean Pro": claro, limpo, uma cor de destaque.
 
 import { useState } from "react";
 import type { Dict, Lang } from "@/lib/i18n";
 import type { Brawler, GameMap } from "@/lib/types";
 
-// ----- Temas de cor. O padrão é "ouro". Para criar outro, copie uma linha e troque as cores. -----
-export const THEMES = {
-  ouro: { bg1: "#07080b", bg2: "#10121a", panel: "#12141c", raised: "#191c27", line: "#272b3a", accent: "#f2c14e", accent2: "#ff8f3f", soft: "#a3aac0" },
-  ametista: { bg1: "#08070d", bg2: "#140f22", panel: "#14111f", raised: "#1c1730", line: "#2e2648", accent: "#b794ff", accent2: "#ff7ac6", soft: "#b2a9cc" },
-  oceano: { bg1: "#05090d", bg2: "#0b1720", panel: "#0e161e", raised: "#14202b", line: "#22323f", accent: "#4fd1ff", accent2: "#7cf2c4", soft: "#9fb3c2" },
-  rubi: { bg1: "#0a0607", bg2: "#1a0d10", panel: "#170f12", raised: "#21151a", line: "#3a2329", accent: "#ff5c6c", accent2: "#ffb04f", soft: "#c4a8ae" },
+// ----- Cores -----
+// O site tem modo claro e escuro, e uma cor de destaque à escolha.
+// Tudo usa estas "variáveis" (var(--nome)), então trocar aqui muda o site inteiro.
+export const MODES = {
+  claro: { bg: "#f6f7f9", panel: "#ffffff", raised: "#ffffff", sunken: "#f1f3f6", line: "#e3e6ec", text: "#14171f", soft: "#5b6272", faint: "#8a91a1", good: "#146c3c", goodBg: "#e8f6ee", bad: "#b42318", badBg: "#fdecea", warn: "#8a5a00", warnBg: "#fff4d6" },
+  escuro: { bg: "#0d1016", panel: "#151922", raised: "#1a1f2a", sunken: "#11151c", line: "#262c38", text: "#eef1f6", soft: "#a3abbc", faint: "#7c8597", good: "#5fd394", goodBg: "#12301f", bad: "#ff8a80", badBg: "#3a1614", warn: "#ffd27a", warnBg: "#3a2c0d" },
 };
-export type ThemeName = keyof typeof THEMES;
+export type ModeName = keyof typeof MODES;
+
+export const ACCENTS = {
+  azul: { accent: "#2457d6", soft: "#eef2fc", softDark: "#1b2847" },
+  roxo: { accent: "#7a3cf0", soft: "#f3edfe", softDark: "#2a1d47" },
+  vermelho: { accent: "#d93a2b", soft: "#fdeeec", softDark: "#40201d" },
+  verde: { accent: "#0f8a6c", soft: "#e7f6f1", softDark: "#123a30" },
+};
+export type AccentName = keyof typeof ACCENTS;
 
 // Cor de cada modo de jogo.
 export const MODE_COLOR: Record<string, string> = {
-  "Gem Grab": "#b56cff",
-  "Brawl Ball": "#5aa9ff",
-  Heist: "#ff6fb5",
-  "Hot Zone": "#ff5a4d",
-  Bounty: "#2fd6c3",
-  Knockout: "#ffa94d",
+  "Gem Grab": "#9b51e0",
+  "Brawl Ball": "#2f80ed",
+  Heist: "#e2479b",
+  "Hot Zone": "#e5533c",
+  Bounty: "#14a394",
+  Knockout: "#e98a24",
 };
 export const MODE_ORDER = ["Gem Grab", "Brawl Ball", "Heist", "Hot Zone", "Bounty", "Knockout"];
 
-// Cor de cada tier.
+// Cor de fundo de cada tier (com texto escuro por cima, para ler bem).
 export const TIER_COLOR: Record<string, string> = {
-  "S+": "#ff5a5a",
-  S: "#ff9f43",
-  A: "#f2c14e",
-  B: "#7bd66f",
-  C: "#5aa9ff",
-  D: "#8b90a3",
+  "S+": "#ffc9c9",
+  S: "#ffe0b8",
+  A: "#fff1b0",
+  B: "#d8f3d0",
+  C: "#d6e6ff",
+  D: "#e6e8ee",
 };
 
 // Classes prontas, para não repetir a mesma lista enorme em todo lugar.
 export const PANEL = "rounded-2xl border border-[var(--line)] bg-[var(--panel)]";
-export const CARD =
-  "rounded-2xl border border-[var(--line)] bg-[var(--raised)] shadow-[0_8px_24px_-12px_rgba(0,0,0,0.8)]";
+export const CARD = "rounded-2xl border border-[var(--line)] bg-[var(--raised)]";
 export const INPUT =
-  "w-full rounded-xl border border-[var(--line)] bg-[var(--panel)] px-4 py-3 font-sans text-sm text-white outline-none placeholder:text-white/35 focus:border-[var(--accent)]";
+  "w-full rounded-xl border border-[var(--line)] bg-[var(--panel)] px-4 py-3 text-sm text-[var(--text)] outline-none placeholder:text-[var(--faint)] focus:border-[var(--accent)]";
+export const H1 = "text-3xl font-extrabold tracking-tight text-[var(--text)]";
+export const H2 = "text-xl font-bold tracking-tight text-[var(--text)]";
+export const SUB = "text-sm text-[var(--soft)]";
 
-// Sombra leve no texto dos títulos.
-export const outline = { textShadow: "0 2px 12px rgba(0,0,0,0.45)" };
-
-/** LOGO: escudo com um raio e duas lâminas cruzadas (o "pick" do draft). */
+/** LOGO: quadrado arredondado na cor de destaque com "BD", e o nome ao lado. */
 export function Logo(props: { size?: number; withName?: boolean }) {
-  const size = props.size ?? 34;
+  const size = props.size ?? 32;
   return (
-    <span className="flex items-center gap-2">
-      <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true">
-        <defs>
-          <linearGradient id="bd-shield" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="var(--accent)" />
-            <stop offset="1" stopColor="var(--accent2)" />
-          </linearGradient>
-        </defs>
-        <path d="M24 3 42 9.5v13.2c0 11-7.4 19.4-18 22.3C13.4 42.1 6 33.7 6 22.7V9.5L24 3Z" fill="url(#bd-shield)" />
-        <path d="M24 7.4 38.2 12.6v10.1c0 8.9-5.8 15.8-14.2 18.4C15.6 38.5 9.8 31.6 9.8 22.7V12.6L24 7.4Z" fill="#0b0c11" />
-        <path d="M26.6 12 17.5 26h6.1l-2.3 10.6L31 21.4h-6.3L26.6 12Z" fill="url(#bd-shield)" />
-      </svg>
+    <span className="flex items-center gap-2.5">
+      <span
+        className="flex items-center justify-center font-extrabold text-white"
+        style={{ width: size, height: size, borderRadius: size * 0.28, background: "var(--accent)", fontSize: size * 0.42 }}
+      >
+        BD
+      </span>
       {props.withName !== false && (
-        <span className="font-display text-xl leading-none tracking-wide text-white">
-          Brawl<span className="text-[var(--accent)]">Draft</span>
-        </span>
+        <span className="text-[19px] font-extrabold tracking-tight text-[var(--text)]">BrawlDraft</span>
       )}
     </span>
   );
 }
 
-export type NavKey = "home" | "draft" | "train" | "meta" | "history" | "owned";
+export type NavKey =
+  | "home"
+  | "draft"
+  | "train"
+  | "meta"
+  | "counters"
+  | "history"
+  | "owned"
+  | "quiz"
+  | "leaderboard"
+  | "compare"
+  | "admin";
 
 /** Moldura de todas as páginas: barra do topo, menu, configurações, conta e rodapé. */
 export function Shell(props: {
   t: Dict;
-  theme: ThemeName;
+  mode: ModeName;
+  accent: AccentName;
   lang: Lang;
   current: NavKey;
-  account: string | null; // e-mail de quem está logado, ou null
-  onTheme: (t: ThemeName) => void;
+  account: string | null; // apelido ou e-mail de quem está logado, ou null
+  isAdmin: boolean;
+  onMode: (m: ModeName) => void;
+  onAccent: (a: AccentName) => void;
   onLang: (l: Lang) => void;
   onNav: (where: NavKey) => void;
   onAccount: () => void;
   children: React.ReactNode;
 }) {
   const { t } = props;
-  const [menu, setMenu] = useState(false); // menu de configurações aberto?
-  const c = THEMES[props.theme] ?? THEMES.ouro;
-  // As cores do tema viram "variáveis" que o resto da tela usa com var(--nome).
+  const [menu, setMenu] = useState<"settings" | "more" | null>(null);
+  const m = MODES[props.mode] ?? MODES.claro;
+  const a = ACCENTS[props.accent] ?? ACCENTS.azul;
   const vars = {
-    "--panel": c.panel,
-    "--raised": c.raised,
-    "--line": c.line,
-    "--accent": c.accent,
-    "--accent2": c.accent2,
-    "--soft": c.soft,
-    background: `radial-gradient(1200px 600px at 50% -200px, color-mix(in srgb, ${c.accent} 14%, transparent), transparent 70%), linear-gradient(180deg, ${c.bg1}, ${c.bg2})`,
+    "--bg": m.bg,
+    "--panel": m.panel,
+    "--raised": m.raised,
+    "--sunken": m.sunken,
+    "--line": m.line,
+    "--text": m.text,
+    "--soft": m.soft,
+    "--faint": m.faint,
+    "--good": m.good,
+    "--good-bg": m.goodBg,
+    "--bad": m.bad,
+    "--bad-bg": m.badBg,
+    "--warn": m.warn,
+    "--warn-bg": m.warnBg,
+    "--accent": a.accent,
+    "--accent-soft": props.mode === "escuro" ? a.softDark : a.soft,
+    background: m.bg,
+    colorScheme: props.mode === "escuro" ? "dark" : "light",
   } as React.CSSProperties;
 
-  const links: { key: NavKey; label: string }[] = [
+  const main: { key: NavKey; label: string }[] = [
     { key: "draft", label: t.liveDraft },
     { key: "train", label: t.training },
     { key: "meta", label: t.metaPage },
+    { key: "counters", label: t.navCounters },
     { key: "history", label: t.history },
-    { key: "owned", label: t.myBrawlers },
   ];
+  const more: { key: NavKey; label: string }[] = [
+    { key: "owned", label: t.myBrawlers },
+    { key: "quiz", label: t.quiz },
+    { key: "leaderboard", label: t.leaderboard },
+    { key: "compare", label: t.compare },
+    ...(props.isAdmin ? [{ key: "admin" as NavKey, label: t.admin }] : []),
+  ];
+  const go = (k: NavKey) => {
+    setMenu(null);
+    props.onNav(k);
+  };
+  const navClass = (on: boolean) =>
+    `shrink-0 rounded-lg px-3 py-2 text-sm transition ${
+      on ? "bg-[var(--accent-soft)] font-semibold text-[var(--accent)]" : "font-medium text-[var(--soft)] hover:text-[var(--text)]"
+    }`;
+  const linkClass = (k: NavKey) => navClass(props.current === k);
 
   return (
-    <main className="min-h-screen font-sans text-white" style={vars}>
+    <main className="min-h-screen font-sans text-[var(--text)]" style={vars}>
       {/* BARRA DO TOPO */}
-      <header className="sticky top-0 z-20 border-b border-[var(--line)] bg-black/40 backdrop-blur-md">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
-          <button onClick={() => props.onNav("home")} aria-label={t.home}>
+      <header className="sticky top-0 z-30 border-b border-[var(--line)] bg-[var(--panel)]">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
+          <button onClick={() => go("home")} aria-label={t.home}>
             <Logo />
           </button>
-          <nav className="ml-4 hidden flex-1 items-center gap-1 md:flex">
-            {links.map((l) => (
-              <button
-                key={l.key}
-                onClick={() => props.onNav(l.key)}
-                className={`rounded-lg px-3 py-1.5 text-sm transition ${
-                  props.current === l.key ? "bg-[var(--raised)] text-[var(--accent)]" : "text-[var(--soft)] hover:text-white"
-                }`}
-              >
+          <nav className="ml-4 hidden flex-1 items-center gap-1 lg:flex">
+            {main.map((l) => (
+              <button key={l.key} onClick={() => go(l.key)} className={linkClass(l.key)}>
                 {l.label}
               </button>
             ))}
+            <div className="relative">
+              <button
+                onClick={() => setMenu(menu === "more" ? null : "more")}
+                className={navClass(more.some((x) => x.key === props.current))}
+                aria-expanded={menu === "more"}
+              >
+                {t.navMore} ▾
+              </button>
+              {menu === "more" && (
+                <div className={`${PANEL} absolute left-0 top-11 w-52 p-1.5 shadow-lg`}>
+                  {more.map((l) => (
+                    <button key={l.key} onClick={() => go(l.key)} className={`${linkClass(l.key)} block w-full text-left`}>
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </nav>
           <div className="ml-auto flex items-center gap-2">
             <button
               onClick={props.onAccount}
-              className="max-w-[160px] truncate rounded-lg border border-[var(--line)] px-3 py-1.5 text-sm text-white transition hover:border-[var(--accent)]"
+              className="max-w-[170px] truncate rounded-xl bg-[var(--text)] px-4 py-2 text-sm font-semibold text-[var(--bg)] transition hover:opacity-90"
             >
               {props.account ?? t.signIn}
             </button>
             <div className="relative">
               <button
-                onClick={() => setMenu(!menu)}
+                onClick={() => setMenu(menu === "settings" ? null : "settings")}
                 aria-label={t.settings}
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--line)] text-[var(--soft)] transition hover:text-white"
+                aria-expanded={menu === "settings"}
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--line)] text-[var(--soft)] transition hover:text-[var(--text)]"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                   <circle cx="12" cy="12" r="3" />
                   <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
                 </svg>
               </button>
-              {menu && (
-                <div className={`${CARD} absolute right-0 top-11 w-56 p-3`}>
-                  <p className="text-xs uppercase tracking-wider text-[var(--soft)]">{t.language}</p>
-                  <div className="mt-2 flex gap-2">
+              {menu === "settings" && (
+                <div className={`${PANEL} absolute right-0 top-12 w-64 p-4 shadow-lg`}>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t.language}</p>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
                     {(["pt", "en"] as Lang[]).map((l) => (
-                      <button
-                        key={l}
-                        onClick={() => props.onLang(l)}
-                        className={`flex-1 rounded-lg border px-2 py-1.5 text-sm ${
-                          props.lang === l ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--line)] text-white"
-                        }`}
-                      >
+                      <button key={l} onClick={() => props.onLang(l)} className={choice(props.lang === l)}>
                         {l === "pt" ? "Português" : "English"}
                       </button>
                     ))}
                   </div>
-                  <p className="mt-3 text-xs uppercase tracking-wider text-[var(--soft)]">{t.theme}</p>
+                  <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t.theme}</p>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    {(Object.keys(MODES) as ModeName[]).map((k) => (
+                      <button key={k} onClick={() => props.onMode(k)} className={choice(props.mode === k)}>
+                        {k === "claro" ? t.themeLight : t.themeDark}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t.accentColor}</p>
                   <div className="mt-2 flex gap-2">
-                    {(Object.keys(THEMES) as ThemeName[]).map((name) => (
+                    {(Object.keys(ACCENTS) as AccentName[]).map((k) => (
                       <button
-                        key={name}
-                        onClick={() => props.onTheme(name)}
-                        title={name}
-                        aria-label={`${t.theme}: ${name}`}
-                        className={`h-8 flex-1 rounded-lg border-2 ${props.theme === name ? "border-white" : "border-transparent"}`}
-                        style={{ background: `linear-gradient(135deg, ${THEMES[name].accent}, ${THEMES[name].accent2})` }}
+                        key={k}
+                        onClick={() => props.onAccent(k)}
+                        aria-label={`${t.accentColor}: ${k}`}
+                        className={`h-9 flex-1 rounded-lg border-2 ${props.accent === k ? "border-[var(--text)]" : "border-transparent"}`}
+                        style={{ background: ACCENTS[k].accent }}
                       />
                     ))}
                   </div>
@@ -180,38 +236,38 @@ export function Shell(props: {
             </div>
           </div>
         </div>
-        {/* Menu no celular: uma linha que rola para o lado */}
-        <nav className="no-scrollbar flex gap-1 overflow-x-auto px-4 pb-2 md:hidden">
-          {links.map((l) => (
-            <button
-              key={l.key}
-              onClick={() => props.onNav(l.key)}
-              className={`shrink-0 rounded-lg px-3 py-1.5 text-sm ${
-                props.current === l.key ? "bg-[var(--raised)] text-[var(--accent)]" : "text-[var(--soft)]"
-              }`}
-            >
+        {/* Menu no celular e em telas médias: uma linha que rola para o lado */}
+        <nav className="no-scrollbar flex gap-1 overflow-x-auto px-4 pb-2 lg:hidden">
+          {[...main, ...more].map((l) => (
+            <button key={l.key} onClick={() => go(l.key)} className={linkClass(l.key)}>
               {l.label}
             </button>
           ))}
         </nav>
       </header>
 
-      <div className="mx-auto max-w-5xl px-4 py-6" onClick={() => menu && setMenu(false)}>
+      <div className="mx-auto max-w-6xl px-4 py-8" onClick={() => menu && setMenu(null)}>
         {props.children}
       </div>
 
       {/* RODAPÉ */}
-      <footer className="border-t border-[var(--line)]">
-        <div className="mx-auto flex max-w-5xl flex-col items-center gap-2 px-4 py-6 text-center">
-          <Logo size={26} />
-          <p className="text-sm text-white">
-            {t.madeBy} <span className="font-display text-[var(--accent)]">Gabriel</span>
+      <footer className="border-t border-[var(--line)] bg-[var(--panel)]">
+        <div className="mx-auto flex max-w-6xl flex-col items-center gap-1 px-4 py-6 text-center">
+          <p className="text-sm text-[var(--soft)]">
+            {t.madeBy} <strong className="text-[var(--text)]">Gabriel</strong>
           </p>
-          <p className="max-w-xl text-[11px] leading-snug text-[var(--soft)] opacity-70">{t.disclaimer}</p>
+          <p className="max-w-xl text-[11px] leading-snug text-[var(--faint)]">{t.disclaimer}</p>
         </div>
       </footer>
     </main>
   );
+}
+
+/** Classe de um botão de escolha (marcado ou não). */
+export function choice(on: boolean) {
+  return `rounded-lg border px-3 py-2 text-sm font-medium transition ${
+    on ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]" : "border-[var(--line)] text-[var(--text)] hover:border-[var(--faint)]"
+  }`;
 }
 
 /** Botão principal (cheio, na cor de destaque). */
@@ -220,24 +276,37 @@ export function PrimaryButton(props: { onClick: () => void; children: React.Reac
     <button
       onClick={props.onClick}
       disabled={props.disabled}
-      className={`rounded-xl font-display tracking-wide text-black transition hover:brightness-110 active:scale-[0.98] disabled:opacity-40 ${
-        props.big ? "px-7 py-3 text-xl" : "px-4 py-2 text-base"
+      className={`rounded-xl bg-[var(--accent)] font-bold text-white transition hover:brightness-110 active:scale-[0.98] disabled:opacity-40 ${
+        props.big ? "px-6 py-3.5 text-base" : "px-4 py-2.5 text-sm"
       }`}
-      style={{ background: "linear-gradient(135deg, var(--accent), var(--accent2))" }}
     >
       {props.children}
     </button>
   );
 }
 
-export function SmallButton(props: { onClick: () => void; children: React.ReactNode }) {
+/** Botão secundário (contorno). */
+export function SmallButton(props: { onClick: () => void; children: React.ReactNode; disabled?: boolean }) {
   return (
     <button
       onClick={props.onClick}
-      className="rounded-lg border border-[var(--line)] bg-[var(--raised)] px-3 py-1.5 text-sm text-white transition hover:border-[var(--accent)] active:scale-[0.98]"
+      disabled={props.disabled}
+      className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2 text-sm font-semibold text-[var(--text)] transition hover:border-[var(--faint)] active:scale-[0.98] disabled:opacity-40"
     >
       {props.children}
     </button>
+  );
+}
+
+/** Etiqueta pequena colorida (tier, "Hoje", "auto"...). */
+export function Pill(props: { children: React.ReactNode; bg?: string; color?: string }) {
+  return (
+    <span
+      className="inline-block rounded-md px-1.5 py-0.5 text-[11px] font-bold leading-none"
+      style={{ background: props.bg ?? "var(--accent-soft)", color: props.color ?? "#14171f" }}
+    >
+      {props.children}
+    </span>
   );
 }
 
@@ -256,46 +325,70 @@ export function Icon(props: { brawler: Brawler; size: number }) {
         height={size}
         loading="lazy"
         onError={() => setBrokenUrl(url)}
-        className="shrink-0 rounded-lg"
+        className="shrink-0 rounded-xl bg-[var(--sunken)]"
         style={{ width: size, height: size, objectFit: "cover" }}
       />
     );
   }
   return (
     <span
-      className="flex shrink-0 items-center justify-center rounded-lg border border-[var(--line)] bg-[var(--panel)] font-display text-[var(--accent)]"
-      style={{ width: size, height: size, fontSize: size * 0.36 }}
+      className="flex shrink-0 items-center justify-center rounded-xl bg-[var(--accent-soft)] font-bold text-[var(--accent)]"
+      style={{ width: size, height: size, fontSize: size * 0.34 }}
     >
       {brawler.name.slice(0, 2).toUpperCase()}
     </span>
   );
 }
 
-/** Miniatura do mapa. Se a foto falhar, mostra um bloco com a cor do modo. */
-export function MapThumb(props: { map: GameMap; width: number }) {
-  const { map, width } = props;
-  const height = Math.round(width * 1.3); // os mapas são mais altos que largos
+/**
+ * Foto do mapa (vista de cima). Ocupa a largura do espaço onde está, na altura pedida.
+ * Tocar abre a foto grande (zoom).
+ */
+export function MapImage(props: { map: GameMap; height: number; zoomLabel: string; closeLabel: string; rounded?: string }) {
+  const { map, height } = props;
   const [broken, setBroken] = useState(false);
-  if (map.imageUrl && !broken) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={map.imageUrl}
-        alt={map.name}
-        width={width}
-        height={height}
-        loading="lazy"
-        onError={() => setBroken(true)}
-        className="shrink-0 rounded-md border border-[var(--line)] bg-black/40"
-        style={{ width, height, objectFit: "contain" }}
-      />
-    );
+  const [zoom, setZoom] = useState(false);
+  const box = `${props.rounded ?? "rounded-xl"} w-full overflow-hidden bg-[var(--sunken)]`;
+  if (!map.imageUrl || broken) {
+    return <div className={box} style={{ height, background: `linear-gradient(160deg, ${MODE_COLOR[map.mode] ?? "#888"}33, transparent)` }} />;
   }
   return (
-    <span
-      className="shrink-0 rounded-md border border-[var(--line)] opacity-60"
-      style={{ width, height, background: MODE_COLOR[map.mode] ?? "#555" }}
-    />
+    <>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation(); // não deixa o toque abrir o draft do cartão
+          setZoom(true);
+        }}
+        className={`${box} block cursor-zoom-in`}
+        style={{ height }}
+        aria-label={`${props.zoomLabel}: ${map.name}`}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={map.imageUrl}
+          alt={map.name}
+          loading="lazy"
+          onError={() => setBroken(true)}
+          className="h-full w-full object-contain"
+        />
+      </button>
+      {zoom && (
+        <div
+          role="dialog"
+          aria-label={map.name}
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-black/80 p-4"
+          onClick={(e) => {
+            e.stopPropagation();
+            setZoom(false);
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={map.imageUrl} alt={map.name} className="max-h-[85vh] max-w-full rounded-xl object-contain" />
+          <button className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black">{props.closeLabel}</button>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -315,19 +408,17 @@ export function Strip(props: {
     <div
       onClick={props.onSelect}
       className={`rounded-2xl border p-3 transition ${props.onSelect ? "cursor-pointer" : ""} ${
-        props.active
-          ? "border-[var(--accent)] bg-[var(--raised)] shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)]"
-          : "border-[var(--line)] bg-[var(--panel)]"
+        props.active ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--panel)]"
       }`}
     >
-      <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-wider text-[var(--soft)]">
+      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--soft)]">
         <span className="h-2.5 w-2.5 rounded-full" style={{ background: props.color }} />
         {props.title}
       </div>
-      <div className="flex gap-1">
+      <div className="flex flex-wrap gap-1.5">
         {slots.map((id, i) => {
           const b = id !== null ? props.byId.get(id) : undefined;
-          if (!b) return <span key={i} className="h-11 w-11 rounded-lg border border-dashed border-white/15" />;
+          if (!b) return <span key={i} className="h-11 w-11 rounded-xl border border-dashed border-[var(--line)] bg-[var(--panel)]" />;
           const remove = props.onRemove;
           if (!remove) return <Icon key={i} brawler={b} size={44} />;
           return (
@@ -354,18 +445,20 @@ export function Part(props: { label: string; value: number }) {
   const text = `${v > 0 ? "+" : ""}${v.toFixed(1)}`;
   return (
     <span>
-      {props.label}: <span className={v < 0 ? "text-red-300" : "text-green-300"}>{text}</span>
+      {props.label}: <span className={`font-semibold ${v < 0 ? "text-[var(--bad)]" : "text-[var(--good)]"}`}>{text}</span>
     </span>
   );
 }
 
-/** Grade de Brawlers tocáveis, com busca. Usada no draft e em "Meus Brawlers". */
+/** Grade de Brawlers tocáveis, com busca. Usada no draft, em "Meus Brawlers" e nas ferramentas. */
 export function BrawlerGrid(props: {
   brawlers: Brawler[];
   placeholder: string;
   /** Devolve como o botão deve aparecer: normal, apagado ou destacado. */
   state: (b: Brawler) => "normal" | "dim" | "on";
   disabled?: (b: Brawler) => boolean;
+  /** Texto pequeno embaixo do nome (nível, troféus...). */
+  caption?: (b: Brawler) => string | null;
   onPick: (b: Brawler) => void;
 }) {
   const [search, setSearch] = useState("");
@@ -374,9 +467,10 @@ export function BrawlerGrid(props: {
   return (
     <div>
       <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={props.placeholder} className={INPUT} />
-      <div className="mt-3 grid grid-cols-5 gap-2 sm:grid-cols-8 md:grid-cols-10">
+      <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
         {list.map((b) => {
           const st = props.state(b);
+          const cap = props.caption?.(b);
           return (
             <button
               key={b.id}
@@ -386,12 +480,13 @@ export function BrawlerGrid(props: {
                 setSearch("");
               }}
               title={b.name}
-              className={`flex flex-col items-center gap-1 rounded-xl border p-1 transition ${
-                st === "on" ? "border-[var(--accent)] bg-[var(--raised)]" : "border-[var(--line)] bg-[var(--panel)]"
-              } ${st === "dim" ? "opacity-25" : "hover:border-[var(--accent)] active:scale-95"}`}
+              className={`flex flex-col items-center gap-1 rounded-xl border p-1.5 transition ${
+                st === "on" ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--panel)]"
+              } ${st === "dim" ? "opacity-30" : "hover:border-[var(--accent)] active:scale-95"}`}
             >
-              <Icon brawler={b} size={56} />
-              <span className="w-full truncate text-center text-[10px] text-white">{b.name}</span>
+              <Icon brawler={b} size={52} />
+              <span className="w-full truncate text-center text-[11px] font-medium text-[var(--text)]">{b.name}</span>
+              {cap && <span className="text-[10px] text-[var(--faint)]">{cap}</span>}
             </button>
           );
         })}

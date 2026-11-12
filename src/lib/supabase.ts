@@ -6,10 +6,13 @@
 //   NEXT_PUBLIC_SUPABASE_ANON_KEY  -> chave "publishable" (sb_publishable_...) ou a antiga "anon"
 //   SUPABASE_SERVICE_ROLE_KEY      -> chave "secret" (sb_secret_...) ou a antiga "service_role" (SECRETA)
 
+import type { Overrides } from "./engine";
+import type { RosterItem } from "./storage";
+
 export const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 export const SB_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
-/** O que depende do Supabase (trio, contas, coletor) só aparece com ele configurado. */
+/** O que depende do Supabase (trio, contas, placar...) só aparece com ele configurado. */
 export const SUPABASE_ON = SB_URL !== "" && SB_ANON !== "";
 
 /**
@@ -26,6 +29,23 @@ export function keyHeaders(key: string, token?: string): Record<string, string> 
 
 export function sbHeaders(token?: string, extra: Record<string, string> = {}) {
   return { ...keyHeaders(SB_ANON, token), "Content-Type": "application/json", ...extra };
+}
+
+/** Pedido genérico à API REST. Devolve o corpo em JSON, ou null se falhar. */
+async function rest<T>(path: string, init: RequestInit & { token?: string; prefer?: string } = {}): Promise<T | null> {
+  if (!SUPABASE_ON) return null;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
+      ...init,
+      headers: sbHeaders(init.token, init.prefer ? { Prefer: init.prefer } : {}),
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const text = await res.text();
+    return (text ? JSON.parse(text) : true) as T;
+  } catch {
+    return null;
+  }
 }
 
 // ======================= CONTAS =======================
@@ -81,34 +101,91 @@ export async function freshSession(s: Session | null): Promise<Session | null> {
   return r.session;
 }
 
-// ============== DADOS DO USUÁRIO (histórico e Brawlers) ==============
+// ============== DADOS DO USUÁRIO ==============
 
-export type UserData = { history: unknown[]; owned: number[] };
+export type UserData = {
+  history: unknown[];
+  owned: number[];
+  nick?: string | null;
+  tag?: string | null;
+  roster?: RosterItem[];
+  free6?: number[];
+};
 
 export async function loadUserData(s: Session): Promise<UserData | null> {
-  try {
-    const res = await fetch(`${SB_URL}/rest/v1/user_data?user_id=eq.${s.user.id}&select=history,owned`, {
-      headers: sbHeaders(s.access_token),
-      cache: "no-store",
-    });
-    if (!res.ok) return null;
-    const rows = (await res.json()) as UserData[];
-    return rows[0] ?? { history: [], owned: [] };
-  } catch {
-    return null;
-  }
+  const rows = await rest<UserData[]>(`user_data?user_id=eq.${s.user.id}&select=history,owned,nick,tag,roster,free6`, {
+    token: s.access_token,
+  });
+  if (!rows) return null;
+  return rows[0] ?? { history: [], owned: [] };
 }
 
 export async function saveUserData(s: Session, data: UserData): Promise<boolean> {
-  try {
-    const res = await fetch(`${SB_URL}/rest/v1/user_data`, {
-      method: "POST",
-      // "merge-duplicates" = se a linha já existe, atualiza em vez de dar erro.
-      headers: sbHeaders(s.access_token, { Prefer: "resolution=merge-duplicates" }),
-      body: JSON.stringify({ user_id: s.user.id, ...data, updated_at: new Date().toISOString() }),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
+  const r = await rest<unknown>("user_data", {
+    method: "POST",
+    token: s.access_token,
+    // "merge-duplicates" = se a linha já existe, atualiza em vez de dar erro.
+    prefer: "resolution=merge-duplicates",
+    body: JSON.stringify({ user_id: s.user.id, ...data, updated_at: new Date().toISOString() }),
+  });
+  return r !== null;
+}
+
+// ============== ADMINISTRADOR ==============
+
+/** É administrador? (está na tabela "admins") */
+export async function isAdmin(s: Session): Promise<boolean> {
+  const rows = await rest<unknown[]>(`admins?user_id=eq.${s.user.id}&select=user_id`, { token: s.access_token });
+  return !!rows && rows.length > 0;
+}
+
+/** Correções do administrador (counters, sinergias e dicas de mapa). Qualquer um lê. */
+export async function loadOverrides(): Promise<Overrides | null> {
+  const rows = await rest<{ data: Overrides }[]>("overrides?id=eq.meta&select=data");
+  return rows?.[0]?.data ?? null;
+}
+
+export async function saveOverrides(s: Session, data: Overrides): Promise<boolean> {
+  const r = await rest<unknown>("overrides", {
+    method: "POST",
+    token: s.access_token,
+    prefer: "resolution=merge-duplicates",
+    body: JSON.stringify({ id: "meta", data, updated_at: new Date().toISOString() }),
+  });
+  return r !== null;
+}
+
+// ============== VISITAS ==============
+
+/** Conta uma visita a uma tela (sem guardar nada da pessoa). */
+export function logVisit(screen: string) {
+  void rest<unknown>("visits", { method: "POST", body: JSON.stringify({ screen }) });
+}
+
+/** Visitas dos últimos 30 dias (só o administrador consegue ler). */
+export async function loadVisits(s: Session): Promise<{ screen: string; day: string }[] | null> {
+  const from = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  return rest(`visits?select=screen,day&day=gte.${from}&limit=50000`, { token: s.access_token });
+}
+
+// ============== PLACAR DO TREINO ==============
+
+export type Score = { nick: string; score: number; map: string; created_at: string; user_id: string };
+
+export async function saveScore(s: Session, nick: string, score: number, map: string): Promise<boolean> {
+  const r = await rest<unknown>("train_scores", {
+    method: "POST",
+    token: s.access_token,
+    body: JSON.stringify({ user_id: s.user.id, nick, score, map }),
+  });
+  return r !== null;
+}
+
+/** Melhores notas (a melhor de cada conta), da maior para a menor. */
+export async function loadScores(): Promise<Score[] | null> {
+  const rows = await rest<Score[]>("train_scores?select=nick,score,map,created_at,user_id&order=score.desc,created_at.asc&limit=500");
+  if (!rows) return null;
+  const best = new Map<string, Score>();
+  for (const r of rows) if (!best.has(r.user_id)) best.set(r.user_id, r);
+  return [...best.values()].slice(0, 50);
 }

@@ -35,7 +35,18 @@ export type Recommendation = {
   brawler: Brawler;
   score: number;
   /** Pontuação separada por fator, para mostrar de onde veio a nota. */
-  parts: { base: number; map: number; counter: number; synergy: number; comp: number; risk: number; personal: number };
+  parts: {
+    base: number;
+    map: number;
+    counter: number;
+    synergy: number;
+    comp: number;
+    risk: number;
+    personal: number;
+    comfort: number;
+  };
   /** Frases curtas explicando a recomendação. */
   reasons: string[];
+  /** Alerta de armadilha: nome de um counter forte dele que o inimigo ainda pode pegar. */
+  trap?: string;
 };
