@@ -2,7 +2,7 @@
 // Cada linha: [modo, nome do mapa, os Brawlers mais fortes nele, do melhor para o pior].
 // Estes são os dados SALVOS, usados só quando a leitura ao vivo do topbrawl.com
 // falha (veja src/lib/livemeta.ts). Com ela funcionando, a lista de destaques de
-// cada mapa é trocada pela atual a cada 12 horas.
+// cada mapa é trocada pela atual a cada 8 horas.
 // A foto de cada mapa vem do CDN da Brawlify, pelo número do mapa no jogo (MAP_IDS).
 // Quando a temporada mudar os mapas, é este arquivo que a gente atualiza.
 

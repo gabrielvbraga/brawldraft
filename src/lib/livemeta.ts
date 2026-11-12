@@ -3,7 +3,7 @@
 // lista dos melhores Brawlers de cada uma. Roda no SERVIDOR do site (Vercel).
 //
 // A atualização automática vem do "use cache" + cacheLife: o Next.js guarda o
-// resultado e, depois de 12 horas, busca tudo de novo na próxima visita.
+// resultado e, depois de 8 horas, busca tudo de novo na próxima visita.
 // Ninguém precisa fazer nada.
 //
 // Se o topbrawl mudar o layout ou ficar fora do ar, a leitura falha e o site
@@ -11,7 +11,7 @@
 
 import { cacheLife } from "next/cache";
 
-export const TWELVE_HOURS = 60 * 60 * 12;
+export const REFRESH = 60 * 60 * 8; // 8 horas
 
 const BASE = "https://topbrawl.com/rankeds";
 
@@ -25,6 +25,8 @@ export type LiveMeta = {
   maps: Record<number, MetaRow[]>;
   /** Quando os dados foram buscados (texto ISO). */
   updatedAt: string;
+  /** true = cópia salva no site (a leitura ao vivo falhou). */
+  saved?: boolean;
 };
 
 /** Deixa o texto só com letras e números minúsculos, para comparar nomes. */
@@ -36,40 +38,84 @@ export function normalize(text: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
+/** Escapa um texto para usar dentro de uma expressão regular. */
+const escapeRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Lê um número com vírgula ou ponto ("60,1" ou "60.10"). */
+const toNumber = (t: string) => Number(t.replace(",", "."));
+
 /**
- * Lê o HTML de uma página do topbrawl e devolve as linhas da tabela, na ordem.
- * Cada linha da tabela tem um link para "/brawlers/<nome>" seguido de três
- * números com duas casas decimais (vitórias, uso e pontuação).
+ * JEITO 1: pelos links. Cada linha da tabela tem um link para "/brawlers/<nome>"
+ * seguido dos números da linha (vitórias, uso e pontuação).
  */
-export function parseTable(html: string, knownNames: string[]): MetaRow[] {
-  const byKey = new Map(knownNames.map((n) => [normalize(n), n]));
-  const clean = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
-
-  // Acha todos os links de Brawler e onde cada um começa no texto.
-  const links = [...clean.matchAll(/<a[^>]+href="[^"]*\/brawlers\/([a-z0-9-]+)\/?"[^>]*>([\s\S]*?)<\/a>/gi)];
-
+function byLinks(html: string, byKey: Map<string, string>): MetaRow[] {
+  const links = [...html.matchAll(/<a[^>]+href="[^"]*\/brawlers\/([a-z0-9-]+)\/?"[^>]*>([\s\S]*?)<\/a>/gi)];
   const rows: MetaRow[] = [];
   const seen = new Set<string>();
   links.forEach((link, i) => {
-    // Nome: tenta pelo endereço do link e, se não achar, pelo texto do link.
-    const slugKey = normalize(link[1]);
-    const textKey = normalize(link[2].replace(/<[^>]+>/g, " "));
-    const name = byKey.get(slugKey) ?? byKey.get(textKey);
+    const name = byKey.get(normalize(link[1])) ?? byKey.get(normalize(link[2].replace(/<[^>]+>/g, " ")));
     if (!name || seen.has(name)) return;
-
-    // Texto entre este link e o próximo: é onde ficam os números da linha.
     const start = (link.index ?? 0) + link[0].length;
-    const end = i + 1 < links.length ? (links[i + 1].index ?? clean.length) : clean.length;
-    const between = clean.slice(start, end).replace(/<[^>]+>/g, " ");
-    // Números com casa decimal (60.1, 60.10, 60,10), com ou sem "%".
-    const nums = [...between.matchAll(/(\d{1,3}[.,]\d{1,2})\s*%?/g)].map((m) => Number(m[1].replace(",", ".")));
+    const end = i + 1 < links.length ? (links[i + 1].index ?? html.length) : html.length;
+    const between = html.slice(start, end).replace(/<[^>]+>/g, " ");
+    const nums = [...between.matchAll(/(\d{1,3}[.,]\d{1,2})/g)].map((m) => toNumber(m[1]));
     if (nums.length < 2) return; // sem números: não é uma linha da tabela (ex.: medalhas do topo)
-
     seen.add(name);
     rows.push({ name, wins: nums[0], use: nums[1] });
   });
-  // O 1º é sempre quem tem MAIS % DE VITÓRIAS.
-  return rows.sort((a, b) => b.wins - a.wins);
+  return rows;
+}
+
+/**
+ * JEITO 2: pelo texto. Tira todas as marcações e procura cada nome de Brawler
+ * seguido de pelo menos dois números com casa decimal, sem outro nome no meio.
+ * Funciona tanto no texto da página quanto nos dados escondidos em <script>.
+ */
+function byText(text: string, names: string[]): MetaRow[] {
+  const rows: MetaRow[] = [];
+  // Nomes maiores primeiro, para "Larry & Lawrie" não virar "Larry".
+  const sorted = [...names].sort((a, b) => b.length - a.length);
+  const anyName = new RegExp(`(?<![A-Za-z])(${sorted.map(escapeRe).join("|")})(?![A-Za-z])`, "g");
+  const hits = [...text.matchAll(anyName)];
+  const seen = new Set<string>();
+  hits.forEach((hit, i) => {
+    const name = hit[1];
+    if (seen.has(name)) return;
+    const start = (hit.index ?? 0) + name.length;
+    const end = Math.min(i + 1 < hits.length ? (hits[i + 1].index ?? text.length) : text.length, start + 300);
+    const nums = [...text.slice(start, end).matchAll(/(?<![\d.,])(\d{1,2}[.,]\d{1,2})(?![\d])/g)].map((m) => toNumber(m[1]));
+    if (nums.length < 2 || nums[0] > 100) return;
+    seen.add(name);
+    rows.push({ name, wins: nums[0], use: nums[1] });
+  });
+  return rows;
+}
+
+/**
+ * Lê o HTML de uma página do topbrawl e devolve as linhas da tabela.
+ * Tenta três jeitos, do mais preciso para o mais solto, e fica com o primeiro
+ * que achar pelo menos 3 Brawlers. O resultado vem ordenado por % DE VITÓRIAS.
+ */
+export function parseTable(html: string, knownNames: string[]): MetaRow[] {
+  const byKey = new Map(knownNames.map((n) => [normalize(n), n]));
+  const scripts = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]).join(" ");
+  const page = html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ");
+  const pageText = page
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ");
+  // Os dados dentro de <script> costumam vir com aspas e símbolos "escapados".
+  const scriptText = scripts
+    .replace(/\\u0026/g, "&")
+    .replace(/\\"/g, '"')
+    .replace(/\\n/g, " ");
+
+  for (const attempt of [() => byLinks(page, byKey), () => byText(pageText, knownNames), () => byText(scriptText, knownNames)]) {
+    const rows = attempt();
+    if (rows.length >= 3) return rows.sort((a, b) => b.wins - a.wins); // o 1º é quem mais vence
+  }
+  return [];
 }
 
 async function fetchPage(url: string): Promise<string | null> {
@@ -103,8 +149,8 @@ export async function getLiveMeta(mapIds: number[], knownNames: string[]): Promi
     cacheLife({ stale: 60, revalidate: 600, expire: 3600 });
     return null;
   }
-  // Deu certo: guarda por 12 horas. Depois disso, a próxima visita busca de novo.
-  cacheLife({ stale: 60 * 60, revalidate: TWELVE_HOURS, expire: TWELVE_HOURS * 14 });
+  // Deu certo: guarda por 8 horas. Depois disso, a próxima visita busca de novo.
+  cacheLife({ stale: 60 * 60, revalidate: REFRESH, expire: REFRESH * 14 });
 
   const maps: Record<number, MetaRow[]> = {};
   const pages = await Promise.all(mapIds.map((id) => fetchPage(`${BASE}/${id}`)));

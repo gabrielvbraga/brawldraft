@@ -212,6 +212,7 @@ export default function App(props: { live: LiveMeta | null; collected: Collected
           t={t}
           lang={lang}
           updatedAt={props.live?.updatedAt ?? null}
+          metaSaved={props.live?.saved === true}
           battles={Math.round(props.collected?.battles ?? 0)}
           ownedCount={owned.length}
           historyCount={history.length}

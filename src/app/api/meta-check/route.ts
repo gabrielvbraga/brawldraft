@@ -21,15 +21,17 @@ export async function GET(request: Request) {
     });
     const html = await res.text();
     const rows = parseTable(html, BRAWLERS.map((b) => b.name));
-    const at = html.indexOf("/brawlers/");
+    // Trechos da página perto do nome "Mr. P", para ver como a tabela está escrita.
+    const around = [...html.matchAll(/Mr\. ?P/g)].slice(0, 4).map((m) => html.slice(Math.max(0, (m.index ?? 0) - 250), (m.index ?? 0) + 350));
     return Response.json({
       url,
       status: res.status,
       bytes: html.length,
-      brawlerLinks: html.split("/brawlers/").length - 1,
+      anchorsToBrawlers: (html.match(/<a[^>]+\/brawlers\//g) ?? []).length,
+      scriptTags: (html.match(/<script/g) ?? []).length,
       rowsParsed: rows.length,
       firstRows: rows.slice(0, 5),
-      sample: at >= 0 ? html.slice(Math.max(0, at - 300), at + 900) : html.slice(0, 1200),
+      around,
     });
   } catch (e) {
     return Response.json({ url, error: String(e) }, { status: 500 });

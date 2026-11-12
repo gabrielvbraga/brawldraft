@@ -3,6 +3,7 @@
 import App from "@/components/App";
 import { BRAWLERS } from "@/data/brawlers";
 import { MAPS } from "@/data/maps";
+import { SNAPSHOT } from "@/data/snapshot";
 import { getLiveMeta } from "@/lib/livemeta";
 import { getCollected } from "@/lib/stats";
 
@@ -17,5 +18,6 @@ export default async function Home() {
     ),
     getCollected(),
   ]);
-  return <App live={live} collected={collected} />;
+  // Se a leitura ao vivo falhar, usa a cópia salva do topbrawl (nunca outra fonte).
+  return <App live={live ?? SNAPSHOT} collected={collected} />;
 }

@@ -1,12 +1,11 @@
 // MOLDURA GERAL DO SITE: título, ícone, cor da barra do celular e fontes.
 
 import type { Metadata, Viewport } from "next";
-import { Inter, Lilita_One } from "next/font/google";
+import { Poppins } from "next/font/google";
 import "./globals.css";
 
-// Fonte de título (parecida com a do Brawl Stars) e fonte do texto comum.
-const display = Lilita_One({ weight: "400", subsets: ["latin"], variable: "--font-display" });
-const body = Inter({ subsets: ["latin"], variable: "--font-body" });
+// Uma fonte só no site inteiro (Poppins): texto comum mais leve, títulos em negrito.
+const poppins = Poppins({ weight: ["400", "500", "600", "700", "800"], subsets: ["latin"], variable: "--font-main" });
 
 export const metadata: Metadata = {
   title: "BrawlDraft",
@@ -21,7 +20,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={`${display.variable} ${body.variable}`}>
+    <html lang="pt-BR" className={poppins.variable}>
       <body className="font-sans">{children}</body>
     </html>
   );

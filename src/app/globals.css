@@ -10,13 +10,14 @@ body {
   color: #ffffff;
 }
 
-/* Fonte de título (parecida com a do Brawl Stars). O texto comum usa a Inter. */
+/* Uma fonte só (Poppins). Os títulos usam a mesma fonte, só que em negrito. */
+.font-sans,
 .font-display {
-  font-family: var(--font-display), system-ui, sans-serif;
-  letter-spacing: 0.01em;
+  font-family: var(--font-main), system-ui, sans-serif;
 }
-.font-sans {
-  font-family: var(--font-body), system-ui, sans-serif;
+.font-display {
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 /* Esconde a barra de rolagem (a rolagem continua funcionando com o dedo ou o mouse). */

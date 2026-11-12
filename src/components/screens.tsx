@@ -15,7 +15,8 @@ import { BrawlerGrid, CARD, INPUT, Icon, Logo, MODE_COLOR, MODE_ORDER, MapThumb,
 export function Home(props: {
   t: Dict;
   lang: Lang;
-  updatedAt: string | null; // quando o meta ao vivo foi lido (null = usando dados salvos)
+  updatedAt: string | null; // quando o meta foi lido no topbrawl
+  metaSaved: boolean; // true = cópia salva (a leitura ao vivo falhou agora)
   battles: number; // partidas analisadas pelo coletor
   ownedCount: number;
   historyCount: number;
@@ -49,8 +50,8 @@ export function Home(props: {
         />
         <div className="relative flex flex-col items-center">
           <span className="flex items-center gap-2 rounded-full border border-[var(--line)] bg-black/30 px-3 py-1 text-xs text-[var(--soft)]">
-            <span className={`h-2 w-2 rounded-full ${props.updatedAt ? "bg-green-400" : "bg-yellow-400"}`} />
-            {props.updatedAt ? t.liveBadge : t.savedBadge}
+            <span className={`h-2 w-2 rounded-full ${props.metaSaved ? "bg-yellow-400" : "bg-green-400"}`} />
+            {props.metaSaved ? t.savedBadge : t.liveBadge}
           </span>
           <div className="mt-5">
             <Logo size={64} withName={false} />
@@ -67,15 +68,14 @@ export function Home(props: {
             <SmallButton onClick={() => props.onGo("train")}>{t.training}</SmallButton>
           </div>
           <p className="mt-6 text-[11px] text-[var(--soft)]">
-            {props.updatedAt
-              ? t.metaUpdated(
-                  new Date(props.updatedAt).toLocaleString(lang === "pt" ? "pt-BR" : "en-US", {
-                    dateStyle: "short",
-                    timeStyle: "short",
-                    timeZone: "America/Sao_Paulo",
-                  }),
-                )
-              : t.metaSaved}
+            {props.updatedAt &&
+              (props.metaSaved ? t.metaSavedAt : t.metaUpdated)(
+                new Date(props.updatedAt).toLocaleString(lang === "pt" ? "pt-BR" : "en-US", {
+                  dateStyle: "short",
+                  timeStyle: "short",
+                  timeZone: "America/Sao_Paulo",
+                }),
+              )}
           </p>
         </div>
       </section>
@@ -139,9 +139,9 @@ export function Home(props: {
             <button
               key={m.id}
               onClick={() => props.onPickMap(m)}
-              className={`${CARD} flex w-36 shrink-0 flex-col items-center gap-2 p-3 text-center transition hover:border-[var(--accent)]`}
+              className={`${CARD} flex w-44 shrink-0 flex-col items-center gap-2 p-3 text-center transition hover:border-[var(--accent)]`}
             >
-              <MapThumb map={m} width={64} />
+              <MapThumb map={m} width={110} />
               <span className="font-display text-sm leading-tight text-white">{m.name}</span>
               <span className="flex items-center gap-1 text-[10px] text-[var(--soft)]">
                 <span className="h-2 w-2 rounded-full" style={{ background: MODE_COLOR[m.mode] }} />
@@ -292,7 +292,7 @@ export function MapPicker(props: { t: Dict; lang: Lang; title: string; onPick: (
               <span className="h-3 w-3 rounded-full" style={{ background: MODE_COLOR[mode] }} />
               {modeName(lang, mode)}
             </h2>
-            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {list.map((m) => (
                 <button
                   key={m.id}
@@ -300,7 +300,7 @@ export function MapPicker(props: { t: Dict; lang: Lang; title: string; onPick: (
                   className={`${CARD} flex items-center gap-3 border-l-4 px-2 py-2 text-left text-white transition hover:border-[var(--accent)] active:scale-[0.99]`}
                   style={{ borderLeftColor: MODE_COLOR[mode] }}
                 >
-                  <MapThumb map={m} width={40} />
+                  <MapThumb map={m} width={72} />
                   <span className="min-w-0">
                     <span className="block font-display text-base leading-tight">{m.name}</span>
                     <span className="block font-sans text-[11px] text-[var(--soft)]">
@@ -352,7 +352,7 @@ export function MetaScreen(props: { t: Dict; lang: Lang }) {
         ))}
       </select>
       <div className="mt-2 flex items-center gap-3">
-        {map && <MapThumb map={map} width={48} />}
+        {map && <MapThumb map={map} width={96} />}
         <p className="font-sans text-xs text-[var(--soft)]">{map ? t.metaMapSub : t.metaGeneralSub}</p>
       </div>
 

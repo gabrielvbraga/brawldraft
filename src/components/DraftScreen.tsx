@@ -279,7 +279,7 @@ export default function DraftScreen(props: {
       {/* Cabeçalho: mapa, modo e botões */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
-          <MapThumb map={map} width={44} />
+          <MapThumb map={map} width={80} />
           <div>
           <h1 className="font-display text-3xl leading-tight text-white">
             {map.name}
