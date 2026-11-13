@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   if (!secret || given !== secret) return Response.json({ error: "unauthorized" }, { status: 401 });
 
   const rows = (await pushDb<{ tag: string | null }[]>("user_data?select=tag&tag=not.is.null&limit=1000")) ?? [];
-  const tags = [...new Set(rows.map((r) => cleanTag(r.tag ?? "")).filter(Boolean))].slice(0, 400);
+  const tags = [...new Set(rows.map((r) => cleanTag(r.tag ?? "")).filter((x): x is string => !!x))].slice(0, 400);
   let saved = 0;
   const start = Date.now();
   for (let i = 0; i < tags.length && Date.now() - start < 45_000; i += 20) {
