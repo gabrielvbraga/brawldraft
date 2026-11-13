@@ -637,6 +637,13 @@ export function AccountScreen(props: {
   const [setup, setSetup] = useState<MfaSetup | null>(null);
   const [changing, setChanging] = useState(false);
 
+  // O apelido salvo na conta aparece sozinho (também depois de sair e entrar de novo).
+  const [editingNick, setEditingNick] = useState(false);
+  useEffect(() => {
+    setNick(props.nick);
+    setEditingNick(!props.nick);
+  }, [props.nick, props.email]);
+
   // Entrou ou saiu da conta: volta para o login limpo.
   useEffect(() => {
     setMode("login");
@@ -731,14 +738,31 @@ export function AccountScreen(props: {
           <div className={`${CARD} flex flex-col gap-3 p-5`}>
             <p className="font-semibold">{t.loggedAs(props.email)}</p>
             <p className="text-sm text-[var(--good)]">{t.synced}</p>
-            <label className="mt-2 flex flex-col gap-1 text-xs font-semibold text-[var(--soft)]">
-              {t.nick}
-              <input value={nick} maxLength={20} onChange={(e) => setNick(e.target.value)} placeholder={t.nickPlaceholder} className={INPUT} />
-            </label>
+            {editingNick ? (
+              <label className="mt-2 flex flex-col gap-1 text-xs font-semibold text-[var(--soft)]">
+                {t.nick}
+                <input value={nick} maxLength={20} onChange={(e) => setNick(e.target.value)} placeholder={t.nickPlaceholder} className={INPUT} />
+              </label>
+            ) : (
+              <p className="mt-2 text-sm">
+                <span className="text-xs font-semibold text-[var(--soft)]">{t.nick}</span>
+                <span className="block text-lg font-extrabold">{props.nick}</span>
+              </p>
+            )}
             <div className="flex flex-wrap gap-2">
-              <PrimaryButton onClick={() => props.onNick(nick.trim())} disabled={nick.trim().length < 2}>
-                {t.saveNick}
-              </PrimaryButton>
+              {editingNick ? (
+                <PrimaryButton
+                  onClick={() => {
+                    props.onNick(nick.trim());
+                    setEditingNick(false);
+                  }}
+                  disabled={nick.trim().length < 2}
+                >
+                  {t.saveNick}
+                </PrimaryButton>
+              ) : (
+                <SmallButton onClick={() => setEditingNick(true)}>{t.changeNick}</SmallButton>
+              )}
               <SmallButton onClick={() => setChanging(!changing)}>{t.changePass}</SmallButton>
               <SmallButton onClick={props.onLogout}>{t.logout}</SmallButton>
             </div>
