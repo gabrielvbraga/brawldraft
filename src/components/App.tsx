@@ -199,6 +199,10 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
 
   /** Busca os dados da conta e junta com os deste aparelho. */
   async function syncFromAccount(s: Session, local: typeof data.current) {
+    // Cargo primeiro: a aba Admin aparece mesmo se os dados da conta não carregarem.
+    const [isAdm, isMod] = await Promise.all([checkAdmin(s), isModerator(s)]);
+    setAdmin(isAdm);
+    setModerator(isMod);
     const remote = await loadUserData(s);
     if (!remote) return;
     const merged = {
@@ -226,8 +230,6 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
     setSiteStats(merged.stats);
     save("bd-stats", merged.stats);
     saveUserData(s, merged);
-    setAdmin(await checkAdmin(s));
-    setModerator(await isModerator(s));
   }
 
   /** HISTÓRICO AUTOMÁTICO: busca as partidas de Ranked da tag e junta no histórico. */
