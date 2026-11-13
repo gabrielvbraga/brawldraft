@@ -19,3 +19,6 @@ jobs:
       - name: Mandar os avisos no celular
         if: always()
         run: curl -fsS --max-time 70 "https://brawldraft-fawn.vercel.app/api/push/send?key=${{ secrets.CRON_SECRET }}" || echo "avisos ainda não configurados"
+      - name: Guardar os troféus (gráfico de evolução)
+        if: always()
+        run: curl -fsS --max-time 70 "https://brawldraft-fawn.vercel.app/api/snapshot?key=${{ secrets.CRON_SECRET }}" || echo "snapshot falhou"

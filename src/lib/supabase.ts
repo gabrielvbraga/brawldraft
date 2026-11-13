@@ -265,6 +265,11 @@ export async function isAdmin(s: Session): Promise<boolean> {
   return !!rows && rows.length > 0;
 }
 
+export async function isModerator(s: Session): Promise<boolean> {
+  const rows = await rest<unknown[]>(`moderators?user_id=eq.${s.user.id}&select=user_id`, { token: s.access_token });
+  return !!rows && rows.length > 0;
+}
+
 /** Correções do administrador (counters, sinergias e dicas de mapa). Qualquer um lê. */
 export async function loadOverrides(): Promise<Overrides | null> {
   const rows = await rest<{ data: Overrides }[]>("overrides?id=eq.meta&select=data");

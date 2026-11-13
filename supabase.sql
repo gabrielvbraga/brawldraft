@@ -237,3 +237,31 @@ with check (
     from auth.mfa_factors where user_id = (select auth.uid()) and status = 'verified'
   )
 );
+
+-- 15) EVOLUÇÃO DE TROFÉUS E MODERADORES (v16)
+-- Troféus por dia de cada tag: o primeiro e o último valor visto no dia (horário de Brasília).
+create table if not exists trophy_log (
+  tag text not null check (char_length(tag) <= 15),
+  day date not null,
+  first_value integer not null,
+  last_value integer not null,
+  primary key (tag, day)
+);
+alter table trophy_log enable row level security;
+
+create or replace function public.note_trophies(p_tag text, p_trophies integer) returns void
+language sql security definer set search_path = public as $$
+  insert into trophy_log (tag, day, first_value, last_value)
+  values (p_tag, (now() at time zone 'America/Sao_Paulo')::date, p_trophies, p_trophies)
+  on conflict (tag, day) do update set last_value = excluded.last_value;
+$$;
+revoke execute on function public.note_trophies(text, integer) from public, anon, authenticated;
+
+-- Moderadores: podem ver as contas, banir e desbanir (menos administradores).
+create table if not exists moderators (
+  user_id uuid primary key references auth.users on delete cascade,
+  created_at timestamptz not null default now()
+);
+alter table moderators enable row level security;
+drop policy if exists "ver se sou moderador" on moderators;
+create policy "ver se sou moderador" on moderators for select to authenticated using (auth.uid() = user_id);

@@ -28,6 +28,7 @@ import {
   SUPABASE_ON,
   freshSession,
   isAdmin as checkAdmin,
+  isModerator,
   loadOverrides,
   loadRecSummary,
   loadUserData,
@@ -129,6 +130,7 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
   // Conta (Supabase). A sessão fica salva no navegador para não precisar entrar toda vez.
   const [session, setSession] = useState<Session | null>(null);
   const [admin, setAdmin] = useState(false);
+  const [moderator, setModerator] = useState(false);
 
   // Cópia sempre atual dos dados, para gravar na conta sem pegar valores velhos.
   const data = useRef({ history, owned, roster, free6, tag, nick, session, stats: siteStats });
@@ -225,6 +227,7 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
     save("bd-stats", merged.stats);
     saveUserData(s, merged);
     setAdmin(await checkAdmin(s));
+    setModerator(await isModerator(s));
   }
 
   /** HISTÓRICO AUTOMÁTICO: busca as partidas de Ranked da tag e junta no histórico. */
@@ -514,7 +517,7 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
       lang={lang}
       current={current}
       account={session ? nick || session.user.email : null}
-      isAdmin={admin}
+      isAdmin={admin || moderator}
       onMode={(m: ModeName) => {
         setMode(m);
         save("bd-mode", m);
@@ -760,6 +763,7 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
             setSession(null);
             setMfaOn(null);
             setAdmin(false);
+            setModerator(false);
             save("bd-session", null);
           }}
           onNick={(n: string) => {
@@ -815,7 +819,19 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
         />
       )}
 
-      {screen === "admin" && <AdminScreen t={t} lang={lang} session={session} isAdmin={admin} />}
+      {screen === "admin" && (
+        <AdminScreen
+          t={t}
+          lang={lang}
+          session={session}
+          isAdmin={admin}
+          isMod={moderator}
+          onOpenProfile={(tg) => {
+            go("profile");
+            setProfileTag(tg.replace(/^#/, "").toUpperCase());
+          }}
+        />
+      )}
     </Shell>
   );
 }

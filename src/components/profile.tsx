@@ -12,7 +12,7 @@ import { mapName, modeName, type Dict, type Lang } from "@/lib/i18n";
 import type { Match } from "@/lib/matches";
 import type { Player } from "@/lib/player";
 import { rankName } from "@/lib/rank";
-import { RankBadge } from "./insights";
+import { RankBadge, TrophyChart, type TrophyDay } from "./insights";
 import { CARD, H1, H2, INPUT, Icon, Pill, PrimaryButton, SUB, SmallButton } from "./ui";
 
 export type ProfileData = {
@@ -23,6 +23,7 @@ export type ProfileData = {
   matches: Match[];
   recent: RecentSummary;
   views: { total: number; week: number };
+  trophyLog?: TrophyDay[];
 };
 
 const BY_ID = new Map(BRAWLERS.map((b) => [b.id, b]));
@@ -231,6 +232,9 @@ export function ProfileScreen(props: {
               <span className="text-base font-semibold text-[var(--faint)]">/{ach.length}</span>
             </Stat>
           </section>
+
+          {/* Evolução dos troféus: só no próprio perfil */}
+          {isMe && data.trophyLog && data.trophyLog.length > 0 && <TrophyChart t={t} lang={lang} log={data.trophyLog} now={p.trophies} />}
 
           {/* Conquistas */}
           <section className={`${CARD} p-5`}>

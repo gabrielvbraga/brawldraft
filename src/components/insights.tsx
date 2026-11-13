@@ -7,7 +7,7 @@ import type { Dict, Lang } from "@/lib/i18n";
 import { alliesAndRivals, comfortBest, currentRank, lossStreak, rankByDay, type Rate } from "@/lib/insights";
 import { MAX_RANK, rankColor, rankName } from "@/lib/rank";
 import { load, save, type HistoryEntry } from "@/lib/storage";
-import { CARD, H2, Icon, SUB } from "./ui";
+import { CARD, H2, Icon, SUB, choice } from "./ui";
 
 const BY_NAME = new Map(BRAWLERS.map((b) => [b.name, b]));
 
@@ -166,5 +166,111 @@ export function AlliesRivals(props: { t: Dict; history: HistoryEntry[] }) {
       <RateList t={t} title={t.arEasy} items={ar.easyFoes} good />
       <RateList t={t} title={t.arHard} items={ar.hardFoes} good={false} />
     </div>
+  );
+}
+
+// ================= EVOLUÇÃO DOS TROFÉUS (no próprio perfil) =================
+
+export type TrophyDay = { day: string; first_value: number; last_value: number };
+
+export function TrophyChart(props: { t: Dict; lang: Lang; log: TrophyDay[]; now: number }) {
+  const { t, lang } = props;
+  const [range, setRange] = useState<7 | 30 | 0>(30);
+  const [hover, setHover] = useState<number | null>(null);
+  const nf = (n: number) => n.toLocaleString(lang === "pt" ? "pt-BR" : "en-US");
+  const short = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+  const log = [...props.log].sort((a, b) => a.day.localeCompare(b.day));
+  if (log.length === 0) return null;
+
+  // Variações: hoje, 7 dias, 30 dias e desde o primeiro registro.
+  const last = log[log.length - 1];
+  const nowValue = props.now || last.last_value;
+  const lastDay = Date.parse(`${last.day}T12:00:00Z`);
+  const valueAt = (days: number) => {
+    const limit = lastDay - days * 86400000;
+    const before = log.filter((d) => Date.parse(`${d.day}T12:00:00Z`) <= limit);
+    return before.length ? before[before.length - 1].last_value : log[0].first_value;
+  };
+  const deltas = [
+    { label: t.trToday, v: nowValue - last.first_value },
+    { label: t.trWeek, v: nowValue - valueAt(7) },
+    { label: t.trSeason, v: nowValue - valueAt(30) },
+    { label: t.trAll, v: nowValue - log[0].first_value },
+  ];
+  const sign = (n: number) => `${n > 0 ? "+" : ""}${nf(n)}`;
+
+  const points = (range === 0 ? log : log.filter((d) => Date.parse(`${d.day}T12:00:00Z`) > lastDay - range * 86400000)).map((d) => ({
+    day: d.day,
+    v: d.last_value,
+  }));
+  const W = 640;
+  const H = 180;
+  const padL = 58;
+  const padB = 22;
+  const plotW = W - padL - 10;
+  const plotH = H - padB - 12;
+  const lo = Math.min(...points.map((p) => p.v));
+  const hi = Math.max(...points.map((p) => p.v));
+  const span = Math.max(10, hi - lo);
+  const y = (v: number) => 12 + plotH - ((v - lo + span * 0.1) / (span * 1.2)) * plotH;
+  const step = points.length > 1 ? plotW / (points.length - 1) : 0;
+  const x = (i: number) => padL + (points.length > 1 ? i * step : plotW / 2);
+  const ticks = [lo, Math.round((lo + hi) / 2), hi].filter((v, i, a) => a.indexOf(v) === i);
+
+  return (
+    <section className={`${CARD} p-5`}>
+      <h2 className={H2}>{t.trTitle}</h2>
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {deltas.map((d) => (
+          <div key={d.label} className="rounded-xl border border-[var(--line)] p-3">
+            <p className="text-xs text-[var(--soft)]">{d.label}</p>
+            <p className={`text-xl font-extrabold ${d.v > 0 ? "text-[var(--good)]" : d.v < 0 ? "text-[var(--bad)]" : ""}`}>{sign(d.v)}</p>
+          </div>
+        ))}
+      </div>
+      {log.length < 2 ? (
+        <p className={`${SUB} mt-3`}>{t.trFew}</p>
+      ) : (
+        <>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {([7, 30, 0] as const).map((r) => (
+              <button key={r} onClick={() => setRange(r)} className={choice(range === r)}>
+                {r === 7 ? t.trTab7 : r === 30 ? t.trTab30 : t.trTabAll}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 h-5 text-xs font-medium">{hover !== null && points[hover] ? t.trPoint(short(points[hover].day), nf(points[hover].v)) : ""}</p>
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={t.trTitle} onMouseLeave={() => setHover(null)}>
+            {ticks.map((v) => (
+              <g key={v}>
+                <line x1={padL} x2={W - 10} y1={y(v)} y2={y(v)} stroke="var(--line)" />
+                <text x={padL - 8} y={y(v) + 4} textAnchor="end" fontSize={11} fill="var(--faint)">
+                  {nf(v)}
+                </text>
+              </g>
+            ))}
+            {points.length > 1 && (
+              <polyline points={points.map((p, i) => `${x(i)},${y(p.v)}`).join(" ")} fill="none" stroke="var(--accent)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+            )}
+            {points.map((p, i) => (
+              <g key={p.day} onMouseEnter={() => setHover(i)} onClick={() => setHover(i)}>
+                <rect x={x(i) - Math.max(6, step / 2)} y={12} width={Math.max(12, step)} height={plotH} fill="transparent" />
+                {(hover === i || points.length <= 31) && (
+                  <circle cx={x(i)} cy={y(p.v)} r={hover === i ? 5 : 2.5} fill="var(--accent)" stroke="var(--raised)" strokeWidth={hover === i ? 2 : 0} />
+                )}
+              </g>
+            ))}
+            {[0, points.length - 1].map((i) =>
+              points[i] ? (
+                <text key={i} x={x(i)} y={H - 6} textAnchor={i === 0 ? "start" : "end"} fontSize={10} fill="var(--faint)">
+                  {short(points[i].day)}
+                </text>
+              ) : null,
+            )}
+          </svg>
+        </>
+      )}
+      <p className="mt-2 text-xs text-[var(--faint)]">{t.trSince(short(log[0].day))}</p>
+    </section>
   );
 }

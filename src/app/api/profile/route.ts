@@ -49,6 +49,12 @@ export async function GET(request: Request) {
       body: JSON.stringify({ tag, viewer, day: today }),
     });
   }
+  // Guarda os troféus de hoje e lê a evolução (para o gráfico no próprio perfil).
+  await pushDb("rpc/note_trophies", { method: "POST", body: JSON.stringify({ p_tag: tag, p_trophies: player.trophies }) });
+  const trophyLog =
+    (await pushDb<{ day: string; first_value: number; last_value: number }[]>(
+      `trophy_log?tag=eq.${tag}&select=day,first_value,last_value&order=day.asc&limit=1000`,
+    )) ?? [];
   const weekAgo = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
   const [total, week, bestRank, stats] = await Promise.all([
     countViews(tag),
@@ -64,7 +70,7 @@ export async function GET(request: Request) {
   ]);
 
   return Response.json(
-    { player, rank, bestRank: typeof bestRank === "number" ? Math.max(bestRank, rank ?? 0) : rank, matches, recent: summary, views: { total, week }, stats },
+    { player, rank, bestRank: typeof bestRank === "number" ? Math.max(bestRank, rank ?? 0) : rank, matches, recent: summary, views: { total, week }, stats, trophyLog },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
