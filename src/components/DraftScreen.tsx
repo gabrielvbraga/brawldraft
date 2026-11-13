@@ -142,6 +142,8 @@ export default function DraftScreen(props: {
   // Para "as sugestões funcionam?": cada pick seu era uma das 3 primeiras sugestões?
   const [followed, setFollowed] = useState<Record<number, boolean>>({});
   const [manualResult, setManualResult] = useState(false); // marcar o resultado na mão
+  // CELULAR: busca rápida no topo (digita 2-3 letras e toca).
+  const [quick, setQuick] = useState("");
 
   // De quem é a vez, pela ordem do Ranked.
   const turn = nextTurn(first, mine.length, enemies.length);
@@ -221,6 +223,9 @@ export default function DraftScreen(props: {
     }
     setManual(null);
     setOpen(null);
+    setQuick("");
+    // fecha o teclado do celular para a tela não ficar coberta
+    if (typeof document !== "undefined") (document.activeElement as HTMLElement | null)?.blur?.();
   }
 
   function remove(id: number) {
@@ -365,13 +370,13 @@ export default function DraftScreen(props: {
   return (
     <div className="flex flex-col gap-4">
       {/* Cabeçalho: foto do mapa, nome, modo e botões */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-28 shrink-0 sm:w-36">
+          <div className="hidden w-28 shrink-0 sm:block sm:w-36">
             <MapImage map={map} height={150} zoomLabel={t.zoomMap} closeLabel={t.close} />
           </div>
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight">{mapName(lang, map.name)}</h1>
+            <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">{mapName(lang, map.name)}</h1>
             <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-[var(--soft)]">
               <span className="h-2.5 w-2.5 rounded-full" style={{ background: MODE_COLOR[map.mode] }} />
               {modeName(lang, map.mode)}
@@ -450,8 +455,135 @@ export default function DraftScreen(props: {
         </div>
       )}
 
+      {/* CELULAR: times compactos + busca rápida, tudo no topo sem precisar rolar */}
+      {!finished && (
+        <div className="flex flex-col gap-2 sm:hidden">
+          <div className={`${PANEL} flex flex-col gap-2 p-2.5`}>
+            {!noBans && (
+              <div
+                onClick={training ? undefined : () => setManual("ban")}
+                className={`flex items-center gap-1.5 rounded-xl p-1 ${target === "ban" ? "bg-[var(--accent-soft)]" : ""}`}
+              >
+                <span className="w-11 shrink-0 text-[10px] font-bold uppercase text-[var(--soft)]">{t.qkBans}</span>
+                {Array.from({ length: MAX_BANS }, (_, i) => bans[i] ?? null).map((id, i) => {
+                  const b = id !== null ? byId.get(id) : undefined;
+                  return b ? (
+                    <button key={i} aria-label={b.name} onClick={(e) => { e.stopPropagation(); if (!training) remove(b.id); }} className="opacity-70">
+                      <Icon brawler={b} size={30} />
+                    </button>
+                  ) : (
+                    <span key={i} className="h-[30px] w-[30px] rounded-lg border border-dashed border-[var(--line)]" />
+                  );
+                })}
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-1">
+              {([["mine", mine, "#2f80ed", t.qkYou], ["enemy", enemies, "#e5533c", t.enemies]] as const).map(([side, ids, color, label], k) => (
+                <div
+                  key={side}
+                  onClick={training ? undefined : () => setManual(side)}
+                  className={`flex flex-col gap-1 rounded-xl p-1 ${k === 1 ? "items-end" : ""} ${target === side ? "bg-[var(--accent-soft)] ring-1 ring-[var(--accent)]" : ""}`}
+                >
+                  <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-[var(--soft)]">
+                    <span className="h-2 w-2 rounded-full" style={{ background: color }} />
+                    {label}
+                  </span>
+                  <div className="flex gap-1">
+                    {Array.from({ length: TEAM_SIZE }, (_, i) => ids[i] ?? null).map((id, i) => {
+                      const b = id !== null ? byId.get(id) : undefined;
+                      return b ? (
+                        <button key={i} aria-label={b.name} onClick={(e) => { e.stopPropagation(); if (!training) remove(b.id); }}>
+                          <Icon brawler={b} size={40} />
+                        </button>
+                      ) : (
+                        <span key={i} className="h-10 w-10 rounded-xl border border-dashed border-[var(--line)]" />
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <section className={`${CARD} p-3`}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-bold leading-tight">{status}</span>
+              {clockOn && (
+                <span className={`shrink-0 rounded-lg px-2.5 py-1 text-lg font-extrabold text-white ${left <= 5 ? "bg-[#c0392b]" : "bg-[var(--accent)]"}`}>
+                  {t.seconds(Math.max(0, left))}
+                </span>
+              )}
+              {!training && target === "ban" && !bansDone && (
+                <button onClick={() => setBansDone(true)} className="shrink-0 rounded-xl bg-[var(--accent)] px-3 py-2 text-sm font-bold text-white">
+                  {bans.length === 0 ? t.qkSkipBans : t.bansDone} →
+                </button>
+              )}
+              {!training && target !== "ban" && bans.length < MAX_BANS && (
+                <button onClick={() => setManual("ban")} className="shrink-0 rounded-xl border border-[var(--line)] px-2.5 py-1.5 text-xs font-semibold text-[var(--soft)]">
+                  {t.qkBan}
+                </button>
+              )}
+            </div>
+            {!(training && target === "enemy") && (() => {
+              const q = quick.trim().toLowerCase();
+              const matches = q
+                ? brawlers
+                    .filter((b) => !used.has(b.id) && b.name.toLowerCase().includes(q))
+                    .sort((a, b) => Number(!a.name.toLowerCase().startsWith(q)) - Number(!b.name.toLowerCase().startsWith(q)))
+                    .slice(0, 10)
+                : [];
+              const shortcuts: Brawler[] = training
+                ? []
+                : target === "ban"
+                  ? banIdeas
+                  : target === "enemy"
+                    ? enemyIdeas.map((r) => r.brawler)
+                    : ranking.slice(0, 5).map((r) => r.brawler);
+              const hint = target === "ban" ? t.qkHintBan : target === "enemy" ? t.qkHintEnemy : t.qkHintMine;
+              const list = q ? matches : shortcuts;
+              return (
+                <>
+                  <input
+                    value={quick}
+                    onChange={(e) => setQuick(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && matches[0]) add(matches[0].id, target);
+                    }}
+                    placeholder={t.qkPlaceholder}
+                    aria-label={t.qkPlaceholder}
+                    enterKeyHint="done"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    className={`${INPUT} mt-2 w-full text-base`}
+                  />
+                  {!q && list.length > 0 && <p className="mt-2 text-[11px] text-[var(--faint)]">{hint}</p>}
+                  {q && matches.length === 0 && <p className="mt-2 text-xs text-[var(--soft)]">{t.qkNone}</p>}
+                  {list.length > 0 && (
+                    <div className="-mx-1 mt-1.5 flex gap-1.5 overflow-x-auto px-1 pb-1" data-testid="quick-row">
+                      {list.map((b, i) => (
+                        <button
+                          key={b.id}
+                          onClick={() => add(b.id, target)}
+                          className={`flex w-[64px] shrink-0 flex-col items-center gap-1 rounded-xl border p-1 active:scale-95 ${
+                            !q && i === 0 && target === "mine" ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)]"
+                          }`}
+                        >
+                          <Icon brawler={b} size={48} />
+                          <span className="w-full truncate text-center text-[10px] font-semibold">{b.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </section>
+        </div>
+      )}
+
       {/* As três faixas: banidos, meu time e inimigos */}
-      <div className={`grid gap-2 ${noBans ? "md:grid-cols-2" : "md:grid-cols-3"}`}>
+      <div className={`hidden gap-2 sm:grid ${noBans ? "md:grid-cols-2" : "md:grid-cols-3"}`}>
         {!noBans && (
           <Strip title={t.banned} color="#8a91a1" ids={bans} size={MAX_BANS} active={target === "ban"} byId={byId}
             onSelect={training ? undefined : () => setManual("ban")} onRemove={training ? undefined : remove} />
@@ -463,7 +595,7 @@ export default function DraftScreen(props: {
       </div>
 
       {/* Aviso de quem é a vez (e o relógio, no treino) */}
-      <div className={`${PANEL} flex items-center justify-between gap-2 px-4 py-3`}>
+      <div className={`${PANEL} hidden items-center justify-between gap-2 px-4 py-3 sm:flex`}>
         <span className="font-semibold">
           {status}
           {training && target === "ban" ? ` (${myBans}/3)` : ""}
@@ -612,7 +744,7 @@ export default function DraftScreen(props: {
 
       {/* AO VIVO, FASE DE BANS: sugestões de quem banir */}
       {!training && target === "ban" && (
-        <section>
+        <section className="hidden sm:block">
           <h2 className="text-xl font-bold">{t.banIdeas}</h2>
           <p className="text-xs text-[var(--soft)]">{t.banIdeasSub}</p>
           <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
@@ -635,7 +767,7 @@ export default function DraftScreen(props: {
 
       {/* AO VIVO, VEZ DO INIMIGO: picks prováveis deles (ou aviso de que os seus acabaram) */}
       {!training && target === "enemy" && (
-        <section className={`${CARD} p-4`}>
+        <section className={`${CARD} hidden p-4 sm:block`}>
           <h2 className="text-xl font-bold">{t.enemyTurnTitle}</h2>
           <p className="text-xs text-[var(--soft)]">{mine.length >= TEAM_SIZE ? t.myPicksDone : t.enemyTurnSub}</p>
           <div className="mt-3 flex flex-wrap gap-2">

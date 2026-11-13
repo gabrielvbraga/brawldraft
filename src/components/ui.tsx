@@ -456,7 +456,7 @@ export function BrawlerGrid(props: {
   return (
     <div>
       <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={props.placeholder} className={INPUT} />
-      <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
+      <div className="mt-3 grid grid-cols-5 gap-1.5 sm:grid-cols-6 sm:gap-2 md:grid-cols-8 lg:grid-cols-10">
         {list.map((b) => {
           const st = props.state(b);
           const cap = props.caption?.(b);
