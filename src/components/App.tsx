@@ -79,6 +79,7 @@ type Screen =
   | "leaderboard"
   | "compare"
   | "profile"
+  | "myprofile"
   | "daily"
   | "duel"
   | "admin";
@@ -802,6 +803,26 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
           initialCode={duelCode}
           rotation={rotation}
           onResult={(won) => bumpStats((s) => ({ ...s, duelsPlayed: (s.duelsPlayed ?? 0) + 1, duelsWon: (s.duelsWon ?? 0) + (won ? 1 : 0) }))}
+        />
+      )}
+
+      {screen === "myprofile" && (
+        <ProfileScreen
+          key={`meu-${tag}`}
+          fixed
+          t={t}
+          lang={lang}
+          myTag={tag}
+          initialTag={null}
+          loggedIn={session !== null}
+          onLinkTag={() => go("owned")}
+          onLogin={() => go("account")}
+          myStats={siteStats}
+          myBestRank={myBestRank}
+          onCompare={() => {
+            go("compare");
+            setCompareWith(null);
+          }}
         />
       )}
 

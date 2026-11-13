@@ -81,9 +81,14 @@ export function ProfileScreen(props: {
   myStats: SiteStats;
   /** Maior rank que apareceu no seu histórico. */
   myBestRank: number | null;
+  /** Aba "Meu perfil": fixo na tag da sua conta, sem busca. */
+  fixed?: boolean;
+  loggedIn?: boolean;
+  onLinkTag?: () => void;
+  onLogin?: () => void;
 }) {
   const { t, lang } = props;
-  const [input, setInput] = useState(props.initialTag ?? props.myTag ?? "");
+  const [input, setInput] = useState(props.initialTag ?? (props.fixed ? props.myTag : "") ?? "");
   const [data, setData] = useState<ProfileData | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +120,7 @@ export function ProfileScreen(props: {
   }
 
   useEffect(() => {
-    const first = props.initialTag ?? props.myTag;
+    const first = props.fixed ? props.myTag : props.initialTag;
     if (first) open(first);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -161,10 +166,21 @@ export function ProfileScreen(props: {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className={H1}>{t.profileTitle}</h1>
-        <p className={SUB}>{t.profileSub}</p>
+        <h1 className={H1}>{props.fixed ? t.pMine : t.profileTitle}</h1>
+        <p className={SUB}>{props.fixed ? (props.loggedIn ? t.myProfileSub : t.myProfileSubLocal) : t.profileSub}</p>
       </div>
 
+      {props.fixed && !props.myTag && (
+        <section className={`${CARD} flex flex-col gap-3 p-5`}>
+          <p className="text-sm text-[var(--soft)]">{t.myProfileNoTag}</p>
+          <div className="flex flex-wrap gap-2">
+            <PrimaryButton onClick={() => props.onLinkTag?.()}>{t.myBrawlers}</PrimaryButton>
+            {!props.loggedIn && <SmallButton onClick={() => props.onLogin?.()}>{t.login}</SmallButton>}
+          </div>
+        </section>
+      )}
+
+      {!props.fixed && (
       <form
         className="flex flex-wrap gap-2"
         onSubmit={(e) => {
@@ -176,8 +192,8 @@ export function ProfileScreen(props: {
         <PrimaryButton onClick={() => open(input)} disabled={busy || !input.trim()}>
           {busy ? t.loading : t.profileSearch}
         </PrimaryButton>
-        {props.myTag && clean(props.myTag) !== p?.tag && <SmallButton onClick={() => open(props.myTag)}>{t.pMine}</SmallButton>}
       </form>
+      )}
       {error && <p className="text-sm font-medium text-[var(--bad)]">{error}</p>}
 
       {p && data && (
@@ -196,7 +212,7 @@ export function ProfileScreen(props: {
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 <SmallButton onClick={copy}>{copied ? t.linkCopied : t.copyProfile}</SmallButton>
-                <SmallButton onClick={() => props.onCompare(p.tag)}>{t.pCompare}</SmallButton>
+                <SmallButton onClick={() => props.onCompare(p.tag)}>{isMe || !props.myTag ? t.pCompare : t.pCompareMine}</SmallButton>
               </div>
             </div>
             </div>

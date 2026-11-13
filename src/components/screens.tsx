@@ -121,7 +121,7 @@ export function Home(props: {
   showTrio: boolean;
   loggedIn: boolean;
   recSummary: RecSummary | null;
-  onGo: (where: "draft" | "train" | "trio" | "meta" | "history" | "owned" | "account" | "counters" | "quiz" | "leaderboard" | "compare" | "profile" | "daily" | "duel") => void;
+  onGo: (where: "draft" | "train" | "trio" | "meta" | "history" | "owned" | "account" | "counters" | "quiz" | "leaderboard" | "compare" | "profile" | "myprofile" | "daily" | "duel") => void;
   onPickMap: (m: GameMap) => void;
 }) {
   const { t, lang, live } = props;
@@ -143,6 +143,7 @@ export function Home(props: {
     { key: "quiz" as const, title: t.quizTitle, sub: t.quizSub },
     { key: "daily" as const, title: t.dailyTitle, sub: t.dailySub },
     { key: "duel" as const, title: t.duelTitle, sub: t.duelSub },
+    { key: "myprofile" as const, title: t.pMine, sub: t.myProfileSub },
     { key: "profile" as const, title: t.profile, sub: t.profileSub },
     { key: "compare" as const, title: t.compareTitle, sub: t.compareSub },
   ];

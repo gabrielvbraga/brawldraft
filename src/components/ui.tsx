@@ -78,6 +78,7 @@ export type NavKey =
   | "leaderboard"
   | "compare"
   | "profile"
+  | "myprofile"
   | "daily"
   | "duel"
   | "admin";
@@ -129,6 +130,7 @@ export function Shell(props: {
     { key: "history", label: t.history },
   ];
   const more: { key: NavKey; label: string }[] = [
+    { key: "myprofile", label: t.pMine },
     { key: "profile", label: t.profile },
     { key: "duel", label: t.duelTitle },
     { key: "daily", label: t.dailyTitle },
