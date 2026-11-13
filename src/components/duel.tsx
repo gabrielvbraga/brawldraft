@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BRAWLERS } from "@/data/brawlers";
 import { MAPS } from "@/data/maps";
-import { DUEL_BANS, createDuel, duelLetter, duelTurn, newDuel, other, readDuel, writeDuel, type DuelState, type Side } from "@/lib/duel";
+import { DUEL_BANS, createDuel, duelLetter, duelTurn, newDuel, other, readBeat, readDuel, sendBeat, writeDuel, type DuelState, type Side } from "@/lib/duel";
 import { draftGrade, recommend, type PickStage } from "@/lib/engine";
 import { mapName, modeName, type Dict, type Lang } from "@/lib/i18n";
 import { newRoomCode } from "@/lib/room";
@@ -17,18 +17,18 @@ const roleKey = (code: string) => `bd-duel-${code}`;
 
 function Team(props: { title: string; ids: number[]; color: string; active: boolean }) {
   return (
-    <div className={`${CARD} flex-1 p-3 ${props.active ? "ring-2" : ""}`} style={props.active ? ({ "--tw-ring-color": props.color } as React.CSSProperties) : undefined}>
+    <div className={`${CARD} min-w-0 flex-1 p-2.5 sm:p-3 ${props.active ? "ring-2" : ""}`} style={props.active ? ({ "--tw-ring-color": props.color } as React.CSSProperties) : undefined}>
       <p className="flex items-center gap-1.5 truncate text-xs font-bold uppercase tracking-wider" style={{ color: props.color }}>
         <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: props.color }} />
         {props.title}
       </p>
-      <div className="mt-2 flex gap-1.5">
+      <div className="mt-2 flex gap-1">
         {[0, 1, 2].map((i) => {
           const b = props.ids[i] !== undefined ? BY_ID.get(props.ids[i]) : undefined;
           return b ? (
-            <Icon key={i} brawler={b} size={48} />
+            <Icon key={i} brawler={b} size={42} />
           ) : (
-            <span key={i} className="h-12 w-12 rounded-lg border-2 border-dashed opacity-40" style={{ borderColor: props.color }} />
+            <span key={i} className="h-[42px] w-[42px] rounded-lg border-2 border-dashed opacity-40" style={{ borderColor: props.color }} />
           );
         })}
       </div>
@@ -114,6 +114,44 @@ export function DuelScreen(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
+  // ---- Presença: "ainda estou aqui" a cada 4 s; e de olho no outro jogador ----
+  const [otherGone, setOtherGone] = useState<"left" | "away" | null>(null);
+  useEffect(() => {
+    if (!code || side === null) return;
+    let n = 0;
+    let alive = true;
+    const beat = () => alive && sendBeat(code, side, n++);
+    beat();
+    const leave = () => sendBeat(code, side, n++, true);
+    const timer = setInterval(beat, 4000);
+    window.addEventListener("pagehide", leave);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      window.removeEventListener("pagehide", leave);
+      leave(); // saiu da tela do duelo
+    };
+  }, [code, side]);
+  useEffect(() => {
+    if (!code || side === null) return;
+    setOtherGone(null);
+    let lastN = -1;
+    let lastChange = Date.now();
+    const look = async () => {
+      const b = await readBeat(code, other(side));
+      if (!b) return; // o outro ainda não entrou
+      if (b.left) return setOtherGone("left");
+      if (b.n !== lastN) {
+        lastN = b.n;
+        lastChange = Date.now();
+        setOtherGone(null);
+      } else if (Date.now() - lastChange > 20000) setOtherGone("away");
+    };
+    look();
+    const timer = setInterval(look, 4000);
+    return () => clearInterval(timer);
+  }, [code, side]);
+
   // Fim do duelo: avisa uma vez (para as conquistas).
   useEffect(() => {
     if (!state || !code || side === null || reported.current || duelTurn(state) !== null) return;
@@ -153,6 +191,15 @@ export function DuelScreen(props: {
     version.current += 1;
     setState(next);
     await writeDuel(code, next, version.current);
+  }
+
+  /** Sai do duelo e volta para o saguão (o outro jogador fica sabendo). */
+  function leaveDuel() {
+    setCode(null);
+    setState(null);
+    setSide(null);
+    setOtherGone(null);
+    window.history.replaceState(null, "", "/");
   }
 
   function copyLink() {
@@ -273,23 +320,36 @@ export function DuelScreen(props: {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
       {/* Mapa e código */}
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="w-20 shrink-0">
-          <MapImage map={map} height={100} zoomLabel={t.zoomMap} closeLabel={t.close} />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div className="w-16 shrink-0 sm:w-20">
+          <MapImage map={map} height={84} zoomLabel={t.zoomMap} closeLabel={t.close} />
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent)]">⚔️ {t.duelTitle}</p>
-          <h1 className="truncate text-2xl font-extrabold tracking-tight">{mapName(lang, map.name)}</h1>
+          <h1 className="truncate text-xl font-extrabold tracking-tight sm:text-2xl">{mapName(lang, map.name)}</h1>
           <p className="flex items-center gap-1.5 text-sm text-[var(--soft)]">
             <span className="h-2 w-2 rounded-full" style={{ background: MODE_COLOR[map.mode] }} />
             {modeName(lang, map.mode)}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-xl bg-[var(--accent-soft)] px-3 py-1.5 text-lg font-extrabold tracking-widest text-[var(--accent)]">{code}</span>
           <SmallButton onClick={copyLink}>{copied ? t.linkCopied : t.copyLink}</SmallButton>
+          {!result && <SmallButton onClick={leaveDuel}>{t.duelLeave}</SmallButton>}
         </div>
       </div>
+
+      {/* O outro jogador saiu ou caiu */}
+      {otherGone && !result && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-[var(--warn)] bg-[var(--warn-bg)] p-4 sm:flex-row sm:items-center" role="alert">
+          <p className="flex-1 text-sm font-semibold text-[var(--warn)]">
+            {otherGone === "left" ? t.duelOtherLeft(nameOf(other(me))) : t.duelOtherAway(nameOf(other(me)))}
+          </p>
+          <SmallButton onClick={leaveDuel}>{t.duelLeave}</SmallButton>
+        </div>
+      )}
 
       {/* De quem é a vez */}
       <div
@@ -363,15 +423,7 @@ export function DuelScreen(props: {
               >
                 {t.duelRematch}
               </PrimaryButton>
-              <SmallButton
-                onClick={() => {
-                  setCode(null);
-                  setState(null);
-                  window.history.replaceState(null, "", "/");
-                }}
-              >
-                {t.duelNew}
-              </SmallButton>
+              <SmallButton onClick={leaveDuel}>{t.duelNew}</SmallButton>
             </div>
           )}
         </section>

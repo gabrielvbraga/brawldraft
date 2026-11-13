@@ -3,7 +3,7 @@
 // O perfil mostra conta, rank do Ranked, partidas recentes, Brawlers e quantas
 // pessoas já viram o perfil. Link para compartilhar: /?perfil=TAG
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BRAWLERS } from "@/data/brawlers";
 import { MAPS } from "@/data/maps";
 import { achievements, mergeStats, type SiteStats } from "@/lib/achievements";
@@ -90,13 +90,19 @@ export function ProfileScreen(props: {
   const [allBrawlers, setAllBrawlers] = useState(false);
   const nf = (n: number) => n.toLocaleString(lang === "pt" ? "pt-BR" : "en-US");
 
+  // Cada busca ganha um número: se uma busca antiga chegar depois de uma nova, é ignorada.
+  const lastRequest = useRef(0);
+
   async function open(tag: string) {
     const c = clean(tag);
     if (!c) return;
+    const id = ++lastRequest.current;
     setBusy(true);
     setError(null);
+    setInput(`#${c}`);
     // A própria pessoa olhando o próprio perfil não conta como visita.
     const r = await loadProfile(c, c !== clean(props.myTag || ""));
+    if (id !== lastRequest.current) return; // chegou atrasada: já pediram outro perfil
     setBusy(false);
     if (typeof r === "string") {
       setError(t.importErr(r));

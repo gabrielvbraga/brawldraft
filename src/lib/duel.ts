@@ -54,3 +54,21 @@ export function duelLetter(q: number[]): { score: number; letter: string } {
   const letter = score >= 95 ? "S" : score >= 88 ? "A" : score >= 78 ? "B" : score >= 65 ? "C" : "D";
   return { score, letter };
 }
+
+// ---- PRESENÇA: cada jogador avisa "ainda estou aqui" numa linha só dele ----
+// (fica separado da sala para nunca atrapalhar os bans e picks)
+export type Beat = { kind: "beat"; n: number; left: boolean };
+export const beatCode = (code: string, side: Side) => `${code}-${side}`;
+
+/** Avisa que está na sala (n sobe a cada aviso) ou que saiu (left). */
+export async function sendBeat(code: string, side: Side, n: number, left = false): Promise<void> {
+  const key = beatCode(code, side);
+  const st = { kind: "beat", n, left } as unknown as RoomState;
+  if (n === 0) await createRoom(key, st); // primeira vez: cria (se já existir, só atualiza abaixo)
+  await writeRoom(key, st, n + 1);
+}
+
+export async function readBeat(code: string, side: Side): Promise<Beat | null> {
+  const r = await readRoom(beatCode(code, side));
+  return r ? (r.state as unknown as Beat) : null;
+}

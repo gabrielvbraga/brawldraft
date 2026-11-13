@@ -100,6 +100,7 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
   const [setup, setSetup] = useState<DraftSetupChoice | null>(null); // respostas do início do draft
   const [recSummary, setRecSummary] = useState<RecSummary | null>(null);
   const [profileTag, setProfileTag] = useState<string | null>(null); // perfil aberto por link (?perfil=TAG)
+  const [profileOpen, setProfileOpen] = useState(0); // muda a cada toque em "Perfil" no menu (volta para o seu)
   const [compareWith, setCompareWith] = useState<string | null>(null);
   const [duelCode, setDuelCode] = useState<string | null>(null); // duelo aberto por link (?duelo=CODIGO)
   const [siteStats, setSiteStats] = useState<SiteStats>({}); // números do uso do site (conquistas)
@@ -481,7 +482,10 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
   /** Navegação pelo menu do topo e pelos botões da tela inicial. */
   function go(where: NavKey | "trio" | "account") {
     setNotice(null);
-    if (where === "profile") setProfileTag(null);
+    if (where === "profile") {
+      setProfileTag(null);
+      setProfileOpen((n) => n + 1);
+    }
     if (where === "compare") setCompareWith(null);
     if (where === "duel") setDuelCode(null);
     if (/perfil=|duelo=|jogo=/.test(window.location.search)) window.history.replaceState(null, "", "/");
@@ -797,7 +801,7 @@ export default function App(props: { live: LiveMeta; collected: Collected | null
 
       {screen === "profile" && (
         <ProfileScreen
-          key={profileTag ?? "me"}
+          key={`${profileTag ?? "me"}-${profileOpen}`}
           t={t}
           lang={lang}
           myTag={tag}
